@@ -1,4 +1,4 @@
-/* ================= GLOBAL BRAND STYLING ================= */
+/*  GLOBAL BRAND STYLING  */
 :root {
     --kcpo-gold: #D4AF37; 
     --dark-surface: #121212;
@@ -17,7 +17,7 @@ main {
     flex: 1; 
 }
 
-/* Typography */
+/* Typograph */
 .navbar-brand, .font-serif {
     font-family: 'Georgia', serif;
 }

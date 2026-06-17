@@ -1,8 +1,8 @@
-// ================= GLOBAL CLIENT LOGIC =================
+//  GLOBAL CLIENT LOGIC 
 
 document.addEventListener("DOMContentLoaded", () => {
     // 1. Dynamic Navbar Active State Manager
-    // Highlights the navigation link corresponding to the current page URL
+    // Highlights navigation link corresponding to current page URL
     const currentPage = window.location.pathname.split("/").pop() || "index.html";
     const navLinks = document.querySelectorAll(".navbar-nav .nav-link");
 
