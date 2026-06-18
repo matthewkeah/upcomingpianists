@@ -144,3 +144,89 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// PROFILE MODULE: Executive Faculty Card Renderer
+    const memberGrid = document.getElementById("memberGridContainer");
+
+    const memberRegistry = [
+        {
+            name: "Musila",
+            role: "Founding Authority • Legal Convener",
+            location: "United States (Remote)",
+            bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO[cite: 1, 3].",
+            statusBadge: "Remote Founder",
+            photo: "" // Leave empty FOR DEFAULT placeholder!
+        },
+        {
+            name: "Jabali",
+            role: "Logistical Engine • Production Lead",
+            location: "Nairobi, Kenya",
+            bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital[cite: 1, 3].",
+            statusBadge: "Active Core",
+            photo: "" 
+        },
+        {
+            name: "Matthew",
+            role: "Masterclass Coordinator • Technical Anchor",
+            location: "Nairobi, Kenya",
+            bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques[cite: 1, 3, 4].",
+            statusBadge: "Active Core",
+            photo: ""
+        },
+        {
+            name: "Jesse",
+            role: "Artistic Peer • Collaborative Presenter",
+            location: "Nairobi, Kenya",
+            bio: "Active revival contributor. Fosters community accountability and repertoire exploration during monthly anchor sessions[cite: 1, 3].",
+            statusBadge: "Consistent Core",
+            photo: ""
+        },
+        {
+            name: "Victor",
+            role: "Founding Peer • Critique Facilitator",
+            location: "Nairobi, Kenya",
+            bio: "Provides vital operational continuity and delivers highly technical peer feedback on wrist weight and phrasing[cite: 1, 3].",
+            statusBadge: "Consistent Core",
+            photo: ""
+        },
+        {
+            name: "Keoni",
+            role: "Repertoire Anchor • Performance Track",
+            location: "Nairobi, Kenya",
+            bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review[cite: 1, 3].",
+            statusBadge: "Consistent Core",
+            photo: ""
+        }
+    ];
+
+    if (memberGrid) {
+        memberGrid.innerHTML = ""; // Clear existing
+
+        // Default Grey Silhouette SVG 
+        const defaultSVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23666"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+
+        memberRegistry.forEach(member => {
+            const imageSrc = member.photo ? `assets/members/${member.photo}` : defaultSVG;
+
+            const cardHTML = `
+                <div class="col-md-6 col-lg-4">
+                    <div class="profile-card h-100 d-flex flex-column text-center p-4">
+                        <div class="avatar-container">
+                            <img src="${imageSrc}" alt="${member.name} Profile" class="avatar-pfp shadow">
+                        </div>
+                        <div class="card-body p-0 d-flex flex-column flex-grow-1">
+                            <span class="member-role-tag mb-1">${member.role}</span>
+                            <h3 class="font-serif text-light fw-bold mb-1">${member.name}</h3>
+                            <span class="text-muted small mb-3"><i class="bi bi-geo-alt"></i> ${member.location}</span>
+                            <p class="text-secondary small px-2 my-auto">${member.bio}</p>
+                        </div>
+                        <div class="border-top border-secondary pt-3 mt-4">
+                            <span class="badge bg-dark border border-secondary text-light px-3 py-2 fw-normal">${member.statusBadge}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            memberGrid.insertAdjacentHTML("beforeend", cardHTML);
+        });
+        console.log("KCPO Logic: Executive Faculty cards rendered.");
+    }
