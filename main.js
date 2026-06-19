@@ -145,7 +145,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// PROFILE MODULE: Executive Faculty Card Renderer
+// ------------------------------------------------------------------------
+    // MEMBERSHIP MODULE: Dynamic Faculty Renderer (tutors.html)
+    // ------------------------------------------------------------------------
     const memberGrid = document.getElementById("memberGridContainer");
 
     const memberRegistry = [
@@ -153,15 +155,15 @@ document.addEventListener("DOMContentLoaded", () => {
             name: "Musila",
             role: "Founding Authority • Legal Convener",
             location: "United States (Remote)",
-            bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO[cite: 1, 3].",
+            bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO.",
             statusBadge: "Remote Founder",
-            photo: "" // Leave empty FOR DEFAULT placeholder!
+            photo: "" // Leave empty to see the clean grey placeholder icon!
         },
         {
             name: "Jabali",
             role: "Logistical Engine • Production Lead",
             location: "Nairobi, Kenya",
-            bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital[cite: 1, 3].",
+            bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital.",
             statusBadge: "Active Core",
             photo: "" 
         },
@@ -169,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
             name: "Matthew",
             role: "Masterclass Coordinator • Technical Anchor",
             location: "Nairobi, Kenya",
-            bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques[cite: 1, 3, 4].",
+            bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques.",
             statusBadge: "Active Core",
             photo: ""
         },
@@ -177,7 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
             name: "Jesse",
             role: "Artistic Peer • Collaborative Presenter",
             location: "Nairobi, Kenya",
-            bio: "Active revival contributor. Fosters community accountability and repertoire exploration during monthly anchor sessions[cite: 1, 3].",
+            bio: "Active revival contributor. Fosters community accountability and repertoire exploration during monthly anchor sessions.",
             statusBadge: "Consistent Core",
             photo: ""
         },
@@ -185,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
             name: "Victor",
             role: "Founding Peer • Critique Facilitator",
             location: "Nairobi, Kenya",
-            bio: "Provides vital operational continuity and delivers highly technical peer feedback on wrist weight and phrasing[cite: 1, 3].",
+            bio: "Provides vital operational continuity and delivers highly technical peer feedback on wrist weight and phrasing.",
             statusBadge: "Consistent Core",
             photo: ""
         },
@@ -193,26 +195,27 @@ document.addEventListener("DOMContentLoaded", () => {
             name: "Keoni",
             role: "Repertoire Anchor • Performance Track",
             location: "Nairobi, Kenya",
-            bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review[cite: 1, 3].",
+            bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review.",
             statusBadge: "Consistent Core",
             photo: ""
         }
     ];
 
     if (memberGrid) {
-        memberGrid.innerHTML = ""; // Clear existing
-
-        // Default Grey Silhouette SVG 
-        const defaultSVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23666"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+        memberGrid.innerHTML = ""; 
 
         memberRegistry.forEach(member => {
-            const imageSrc = member.photo ? `assets/members/${member.photo}` : defaultSVG;
+            // Bulletproof Fallback Logic:
+            // If photo exists, render an <img> tag. If empty, render a sleek Bootstrap Icon.
+            const avatarHTML = member.photo 
+                ? `<img src="assets/members/${member.photo}" alt="${member.name} Profile" class="avatar-pfp shadow">`
+                : `<i class="bi bi-person-circle default-avatar-icon"></i>`;
 
             const cardHTML = `
                 <div class="col-md-6 col-lg-4">
                     <div class="profile-card h-100 d-flex flex-column text-center p-4">
                         <div class="avatar-container">
-                            <img src="${imageSrc}" alt="${member.name} Profile" class="avatar-pfp shadow">
+                            ${avatarHTML}
                         </div>
                         <div class="card-body p-0 d-flex flex-column flex-grow-1">
                             <span class="member-role-tag mb-1">${member.role}</span>
@@ -228,5 +231,5 @@ document.addEventListener("DOMContentLoaded", () => {
             `;
             memberGrid.insertAdjacentHTML("beforeend", cardHTML);
         });
-        console.log("KCPO Logic: Executive Faculty cards rendered.");
+        console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
     }
