@@ -145,9 +145,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// ------------------------------------------------------------------------
+
     // MEMBERSHIP MODULE: Dynamic Faculty Renderer (tutors.html)
-    // ------------------------------------------------------------------------
+    
     const memberGrid = document.getElementById("memberGridContainer");
 
     const memberRegistry = [
