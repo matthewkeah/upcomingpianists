@@ -60,10 +60,13 @@ main {
 }
 
 .avatar-container {
-    width: 120px;
-    height: 120px;
-    margin: 2rem auto 1rem auto;
+    width: 140px;
+    height: 180px; /* Changed to a fuller vertical portrait box */
+    margin: 1.5rem auto 1rem auto;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .avatar-pfp {
