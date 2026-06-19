@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
             location: "United States (Remote)",
             bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO.",
             statusBadge: "Remote Founder",
-            photo: "" // Leave empty to see the clean grey placeholder icon!
+            photo: "musila.png.jpeg" // Leave empty to see the clean grey placeholder icon!
         },
         {
             name: "Jabali",
@@ -165,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
             location: "Nairobi, Kenya",
             bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital.",
             statusBadge: "Active Core",
-            photo: "" 
+            photo: "jabali.png.jpeg"
         },
         {
             name: "Matthew",
@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
             location: "Nairobi, Kenya",
             bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques.",
             statusBadge: "Active Core",
-            photo: ""
+            photo: "matthew.png.jpeg"
         },
         {
             name: "Jesse",
@@ -197,7 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
             location: "Nairobi, Kenya",
             bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review.",
             statusBadge: "Consistent Core",
-            photo: ""
+            photo: "keoni.png.jpeg"
         }
     ];
 
