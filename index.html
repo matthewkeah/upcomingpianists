@@ -1,14 +1,157 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cadenza | Classical Pianist Masterclasses</title>
+    <title>Cadenza | East Africa's Premier Piano Masterclasses</title>
+    
+    <!-- Bootstrap 5 CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Custom Stylesheet -->
+    <style>
+        :root {
+            --cadenza-gold: #D4AF37; 
+        }
+        
+        .navbar-brand, .font-georgia {
+            font-family: 'Georgia', serif;
+        }
+
+        .navbar-brand {
+            letter-spacing: 2px;
+            color: var(--cadenza-gold) !important;
+        }
+
+        .accent-text {
+            color: var(--cadenza-gold);
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #0a0a0a;
+        }
+        
+        main { flex: 1; }
+
+        /* Homepage Hero Background styling */
+        .hero-banner {
+            background: linear-gradient(rgba(10,10,10,0.85), rgba(10,10,10,0.95)), url('https://images.unsplash.com/photo-1552422535-c45813c61732?auto=format&fit=crop&w=1600&q=80');
+            background-size: cover;
+            background-position: center;
+            border-bottom: 1px solid #222;
+        }
+
+        /* Card Hover animation for interactive feel */
+        .cadenza-card {
+            background-color: #141414;
+            border: 1px solid #262626;
+            transition: all 0.3s ease;
+        }
+
+        .cadenza-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--cadenza-gold);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+    </style>
 </head>
 <body>
 
-    <h1>Cadenza Masterclass Portal</h1>
-    <p>Welcome to the Cadenza Masterclass Portal!</p>
+    <!-- ================= 1. GLOBAL NAVBAR ================= -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-black border-bottom border-secondary">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">CADENZA</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link active" aria-current="page" href="index.html">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="about.html">About</a></li>
+                    <li class="nav-item"><a class="nav-link" href="masterclasses.html">Masterclasses</a></li>
+                    <li class="nav-item"><a class="nav-link" href="tutors.html">Faculty</a></li>
+                    <li class="nav-item"><a class="nav-link" href="archive.html">Sheet Music</a></li>
+                    <li class="nav-item"><a class="nav-link" href="register.html">Register</a></li>
+                    <li class="nav-item"><a class="nav-link" href="contact.html">FAQ & Contact</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
+    <!-- ================= 2. MAIN PAGE CONTENT ================= -->
+    <main>
+        <!-- Hero Section -->
+        <section class="hero-banner text-center py-5 px-3">
+            <div class="container py-5 my-4">
+                <h1 class="display-3 fw-bold accent-text font-georgia mb-3">Elevate Your Touch.</h1>
+                <p class="lead col-lg-8 mx-auto text-light mb-5" style="line-height: 1.8;">
+                    Connecting the region's finest emerging classical pianists with world-renowned conservatory faculty. Master your repertoire through rigorous, intimate live critique.
+                </p>
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <a href="masterclasses.html" class="btn btn-outline-light btn-lg px-4" style="border-color: var(--cadenza-gold); color: var(--cadenza-gold);">View Schedule</a>
+                    <a href="register.html" class="btn btn-light btn-lg px-4 text-dark fw-bold">Secure a Performer Slot</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3-Column Value Proposition Section -->
+        <section class="container py-5 my-5">
+            <div class="text-center mb-5">
+                <span class="text-uppercase tracking-widest text-muted small">The Standard</span>
+                <h2 class="display-6 font-georgia accent-text">Why Cadenza?</h2>
+            </div>
+
+            <div class="row g-4">
+                <!-- Column 1 -->
+                <div class="col-md-4">
+                    <div class="card cadenza-card h-100 p-4 text-center">
+                        <div class="card-body">
+                            <h4 class="card-title font-georgia accent-text mb-3">Intimate Cohorts</h4>
+                            <p class="card-text text-secondary small">
+                                Masterclasses are strictly capped at 6 active performers per session to ensure individualized, highly technical feedback on posture, wrist weight, and phrasing.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Column 2 -->
+                <div class="col-md-4">
+                    <div class="card cadenza-card h-100 p-4 text-center">
+                        <div class="card-body">
+                            <h4 class="card-title font-georgia accent-text mb-3">Concert Pianos</h4>
+                            <p class="card-text text-secondary small">
+                                Technique cannot be refined on compromised actions. All live portal sessions are conducted on fully regulated, concert-prepped Steinway Model D grand pianos.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Column 3 -->
+                <div class="col-md-4">
+                    <div class="card cadenza-card h-100 p-4 text-center">
+                        <div class="card-body">
+                            <h4 class="card-title font-georgia accent-text mb-3">Advanced Repertoire</h4>
+                            <p class="card-text text-secondary small">
+                                Dedicated stylistic tracks covering everything from the intricate counterpoint of J.S. Bach to the sweeping, polyrhythmic demands of Rachmaninoff.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ================= 3. GLOBAL FOOTER ================= -->
+    <footer class="bg-black text-center py-4 border-top border-secondary small text-muted">
+        <div class="container">
+            <p class="mb-0">&copy; 2026 Cadenza Classical Pianist Organization. All rights reserved.</p>
+            <span class="text-secondary">Supported by the Kenya Conservatory Hub</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
