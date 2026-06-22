@@ -5,13 +5,12 @@
  * ============================================================================
  */
 
-// 1. THE REPERTOIRE DATABASE
-// To add new sheet music, simply add a new object to this array.
-let repertoireRegistry = [
+// 1. THE REPERTOIRE DATABASE ( with LocalStorage Persistence)
+const defaultRepertoire = [
     {
         title: "Prelude and Fugue in C Minor, BWV 847",
         composer: "J.S. Bach",
-        notes: "Presented in Year Two active phase. Focuses on contrapuntal voice independence and articulation.",
+        notes: "Presented in Year Two active phase. Focuses on contrapuntal voice independence.",
         era: "Baroque",
         pdfFile: "bach_bwv847.pdf"
     },
@@ -37,6 +36,9 @@ let repertoireRegistry = [
         pdfFile: "chopin_ballade1.pdf"
     }
 ];
+
+// Check if the user has saved scores in their browser memory..
+let repertoireRegistry = JSON.parse(localStorage.getItem("kcpo_repertoire")) || defaultRepertoire;
 
 document.addEventListener("DOMContentLoaded", () => {
     // ------------------------------------------------------------------------
@@ -136,6 +138,9 @@ document.addEventListener("DOMContentLoaded", () => {
             repertoireRegistry.unshift(newEntry); // Adds to top of list
             renderRegistry(repertoireRegistry);
 
+            //  Save the updated array permanently to the browser!
+            localStorage.setItem("kcpo_repertoire", JSON.stringify(repertoireRegistry));
+
             // Close modal & reset form
             const modalInstance = bootstrap.Modal.getInstance(document.getElementById("addScoreModal"));
             modalInstance.hide();
@@ -232,4 +237,6 @@ document.addEventListener("DOMContentLoaded", () => {
             memberGrid.insertAdjacentHTML("beforeend", cardHTML);
         });
         console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
+
+        
     }
