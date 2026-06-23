@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const memberRegistry = [
         {
-            name: "Musila",
+            name: "John Musila",
             role: "Founding Authority • Legal Convener",
             location: "United States (Remote)",
             bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO.",
@@ -165,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
             photo: "musila.png.jpeg" // Leave empty to see the clean grey placeholder icon!
         },
         {
-            name: "Jabali",
+            name: "Leon Jabali",
             role: "Logistical Engine • Production Lead",
             location: "Nairobi, Kenya",
             bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital.",
@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
             photo: "jabali.png.jpeg"
         },
         {
-            name: "Matthew",
+            name: "Matthew Keah",
             role: "Masterclass Coordinator • Technical Anchor",
             location: "Nairobi, Kenya",
             bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques.",
@@ -181,7 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
             photo: "matthew.png.jpeg"
         },
         {
-            name: "Jesse",
+            name: "Jesse Kinyanjui",
             role: "Artistic Peer • Collaborative Presenter",
             location: "Nairobi, Kenya",
             bio: "Active revival contributor. Fosters community accountability and repertoire exploration during monthly anchor sessions.",
