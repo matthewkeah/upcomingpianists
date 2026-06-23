@@ -189,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
             photo: ""
         },
         {
-            name: "Victor",
+            name: "Victor Ngatia",
             role: "Founding Peer • Critique Facilitator",
             location: "Nairobi, Kenya",
             bio: "Provides vital operational continuity and delivers highly technical peer feedback on wrist weight and phrasing.",
@@ -197,7 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
             photo: ""
         },
         {
-            name: "Keoni",
+            name: "Keoni Ngugi",
             role: "Repertoire Anchor • Performance Track",
             location: "Nairobi, Kenya",
             bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review.",
