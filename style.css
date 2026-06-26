@@ -1,0 +1,45 @@
+/* ================= GLOBAL BRAND STYLING ================= */
+:root {
+    --kcpo-gold: #D4AF37; 
+    --dark-surface: #121212;
+    --dark-bg: #0a0a0a;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: var(--dark-bg);
+    color: #f8f9fa;
+}
+
+main { 
+    flex: 1; 
+}
+
+/* Typography */
+.navbar-brand, .font-serif {
+    font-family: 'Georgia', serif;
+}
+
+.navbar-brand {
+    letter-spacing: 1.5px;
+    color: var(--kcpo-gold) !important;
+}
+
+.accent-gold {
+    color: var(--kcpo-gold);
+}
+
+/* UI Cards */
+.kcpo-card {
+    background-color: var(--dark-surface);
+    border: 1px solid #262626;
+    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.kcpo-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--kcpo-gold);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+}
