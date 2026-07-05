@@ -366,4 +366,154 @@ document.addEventListener("DOMContentLoaded", () => {
     // Run session check when page loads
     checkUserSession();
 });
+console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
+
+// ============================================================================
+// SUPABASE AUTHENTICATION MODULE (With 6-Digit OTP Email Verification)
+// ============================================================================
+document.addEventListener("DOMContentLoaded", () => {
+    const signInForm = document.getElementById("signInForm");
+    const signUpForm = document.getElementById("signUpForm");
+    const forgotForm = document.getElementById("forgotForm");
+    const otpForm = document.getElementById("otpForm");
+    const authAlert = document.getElementById("authAlert");
+    const navAuthBtn = document.getElementById("navAuthBtn");
+
+    // We store the user's email temporarily while they check their inbox for the code
+    let currentAuthEmail = "";
+
+    // Helper: Display Alert inside Modal
+    function showAuthAlert(message, type = "danger") {
+        if (!authAlert) return;
+        authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`;
+        authAlert.textContent = message;
     }
+
+    // Helper: Check current session & adjust Navbar Button
+    async function checkUserSession() {
+        if (!supabase || !navAuthBtn) return;
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+            const userEmail = session.user.email;
+            const isAdmin = userEmail.toLowerCase() === "matthew.keah@strathmore.edu";
+            
+            navAuthBtn.innerHTML = isAdmin 
+                ? `<i class="bi bi-shield-lock-fill text-danger me-1"></i> Admin Portal`
+                : `<i class="bi bi-person-check-fill text-success me-1"></i> My Account`;
+            navAuthBtn.classList.replace("btn-outline-warning", "btn-warning");
+            navAuthBtn.classList.add("text-dark", "fw-bold");
+            
+            sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
+            sessionStorage.setItem("kcpo_user", userEmail);
+            console.log(`KCPO Auth: Active Session -> ${userEmail} [Role: ${isAdmin ? 'ADMIN' : 'MEMBER'}]`);
+        } else {
+            sessionStorage.removeItem("kcpo_role");
+            sessionStorage.removeItem("kcpo_user");
+        }
+    }
+
+    // 1. SIGN IN ACTION (Standard Password Login)
+    if (signInForm && supabase) {
+        signInForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Authenticating...", "info");
+            const email = document.getElementById("signInEmail").value.trim();
+            const password = document.getElementById("signInPassword").value;
+
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                showAuthAlert("Welcome back! Loading portal...", "success");
+                await checkUserSession();
+                setTimeout(() => {
+                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
+                    if(modalInstance) modalInstance.hide();
+                    window.location.reload(); 
+                }, 1000);
+            }
+        });
+    }
+
+    // 2. SIGN UP ACTION (Triggers the 6-Digit Email Code)
+    if (signUpForm && supabase) {
+        signUpForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Sending verification code to email...", "info");
+            const name = document.getElementById("signUpName").value.trim();
+            const email = document.getElementById("signUpEmail").value.trim();
+            const password = document.getElementById("signUpPassword").value;
+
+            const { error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: { data: { full_name: name } }
+            });
+
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                currentAuthEmail = email; // Save email for Step 4!
+                showAuthAlert("Account created! We just emailed you a 6-digit code.", "success");
+                
+                // Hide sign-up form and reveal the Verification Code input box
+                signUpForm.classList.add("d-none");
+                const otpSec = document.getElementById("otpSection");
+                if (otpSec) otpSec.classList.remove("d-none");
+            }
+        });
+    }
+
+    // 3. VERIFY THE 6-DIGIT CODE ACTION
+    if (otpForm && supabase) {
+        otpForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Verifying code...", "info");
+            
+            // Grabs the code and removes any accidental spaces the user typed
+            const token = document.getElementById("otpCode").value.replace(/\s+/g, '').trim();
+
+            const { data, error } = await supabase.auth.verifyOtp({
+                email: currentAuthEmail,
+                token: token,
+                type: 'email' 
+            });
+
+            if (error) {
+                showAuthAlert("Invalid code. Please check your inbox and try again: " + error.message, "danger");
+            } else {
+                showAuthAlert("Email verified! Welcome to the portal.", "success");
+                await checkUserSession();
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        });
+    }
+
+    // 4. FORGOT PASSWORD ACTION
+    if (forgotForm && supabase) {
+        forgotForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Sending reset link...", "info");
+            const email = document.getElementById("forgotEmail").value.trim();
+
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + "/index.html"
+            });
+
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                showAuthAlert("Password reset link sent to your email!", "success");
+                forgotForm.reset();
+            }
+        });
+    }
+
+    // Run session check when page loads
+    checkUserSession();
+});
+    }
+    
