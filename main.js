@@ -14,14 +14,12 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Quick diagnostic test to verify connection
-console.log("KCPO Engine: Supabase Cloud Client successfully initialized!", supabase);/**
- * ============================================================================
- * KCPO PORTAL - CORE APPLICATION ENGINE
- * Handles dynamic data rendering, search algorithms, and UI validation.
- * ============================================================================
- */
+console.log("KCPO Engine: Supabase Cloud Client successfully initialized!", supabase);
 
-// 1. THE REPERTOIRE DATABASE ( with LocalStorage Persistence)
+
+// ----------------------------------------------------------------------------
+// 1. THE REPERTOIRE DATABASE (with LocalStorage Persistence)
+// ----------------------------------------------------------------------------
 const defaultRepertoire = [
     {
         title: "Prelude and Fugue in C Minor, BWV 847",
@@ -53,13 +51,10 @@ const defaultRepertoire = [
     }
 ];
 
-// Check if the user has saved scores in their browser memory..
 let repertoireRegistry = JSON.parse(localStorage.getItem("kcpo_repertoire")) || defaultRepertoire;
 
 document.addEventListener("DOMContentLoaded", () => {
-    // ------------------------------------------------------------------------
-    // GLOBAL: Navigation Active State
-    // ------------------------------------------------------------------------
+    // Global Navigation Active State
     const currentPage = window.location.pathname.split("/").pop() || "index.html";
     document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
         if (link.getAttribute("href") === currentPage) {
@@ -68,15 +63,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // ------------------------------------------------------------------------
-    // ARCHIVE MODULE: Dynamic Card Renderer
-    // ------------------------------------------------------------------------
+    // Archive Module: Dynamic Card Renderer
     const gridContainer = document.getElementById("archiveGrid");
     const searchInput = document.getElementById("repertoireSearch");
 
     function renderRegistry(dataSet) {
         if (!gridContainer) return;
-        gridContainer.innerHTML = ""; // Clear grid
+        gridContainer.innerHTML = ""; 
 
         if (dataSet.length === 0) {
             gridContainer.innerHTML = `<div class="col-12 text-center text-muted py-5">No repertoire found matching your search criteria.</div>`;
@@ -106,14 +99,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Initial render on load
     if (gridContainer) {
         renderRegistry(repertoireRegistry);
     }
 
-    // ------------------------------------------------------------------------
-    // ARCHIVE MODULE: Instant Search Algorithm
-    // ------------------------------------------------------------------------
+    // Archive Module: Instant Search Algorithm
     if (searchInput && gridContainer) {
         searchInput.addEventListener("input", (e) => {
             const query = e.target.value.toLowerCase().trim();
@@ -126,22 +116,18 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // ------------------------------------------------------------------------
-    // ARCHIVE MODULE: Form Validation & Dynamic Insertion
-    // ------------------------------------------------------------------------
+    // Archive Module: Form Validation & Dynamic Insertion
     const logForm = document.getElementById("quickLogForm");
     if (logForm) {
         logForm.addEventListener("submit", (e) => {
             e.preventDefault();
             
-            // Bootstrap Form Validation Check
             if (!logForm.checkValidity()) {
                 e.stopPropagation();
                 logForm.classList.add("was-validated");
                 return;
             }
 
-            // Extract values
             const newEntry = {
                 title: document.getElementById("scoreTitle").value.trim(),
                 composer: document.getElementById("scoreComposer").value.trim(),
@@ -150,16 +136,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 pdfFile: document.getElementById("scoreFile").value.trim()
             };
 
-            // Push to active array and re-render
-            repertoireRegistry.unshift(newEntry); // Adds to top of list
+            repertoireRegistry.unshift(newEntry);
             renderRegistry(repertoireRegistry);
-
-            //  Save the updated array permanently to the browser!
             localStorage.setItem("kcpo_repertoire", JSON.stringify(repertoireRegistry));
 
-            // Close modal & reset form
             const modalInstance = bootstrap.Modal.getInstance(document.getElementById("addScoreModal"));
-            modalInstance.hide();
+            if (modalInstance) modalInstance.hide();
             logForm.reset();
             logForm.classList.remove("was-validated");
         });
@@ -167,8 +149,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
-    // MEMBERSHIP MODULE: Dynamic Faculty Renderer (tutors.html)
-    
+// ----------------------------------------------------------------------------
+// 2. MEMBERSHIP MODULE: Dynamic Faculty Renderer (tutors.html)
+// ----------------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
     const memberGrid = document.getElementById("memberGridContainer");
 
     const memberRegistry = [
@@ -178,7 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
             location: "United States (Remote)",
             bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO.",
             statusBadge: "Remote Founder",
-            photo: "musila.png.jpeg" // Leave empty to see the clean grey placeholder icon!
+            photo: "musila.png.jpeg"
         },
         {
             name: "Leon Jabali",
@@ -224,10 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (memberGrid) {
         memberGrid.innerHTML = ""; 
-
         memberRegistry.forEach(member => {
-            // Bulletproof Fallback Logic:
-            // If photo exists, render an <img> tag. If empty, render a sleek Bootstrap Icon.
             const avatarHTML = member.photo 
                 ? `<img src="assets/members/${member.photo}" alt="${member.name} Profile" class="avatar-pfp shadow">`
                 : `<i class="bi bi-person-circle default-avatar-icon"></i>`;
@@ -253,125 +234,16 @@ document.addEventListener("DOMContentLoaded", () => {
             memberGrid.insertAdjacentHTML("beforeend", cardHTML);
         });
         console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
-
-        // ============================================================================
-// SUPABASE AUTHENTICATION MODULE (Sign Up, Sign In, Reset, Role Check)
-// ============================================================================
-document.addEventListener("DOMContentLoaded", () => {
-    const signInForm = document.getElementById("signInForm");
-    const signUpForm = document.getElementById("signUpForm");
-    const forgotForm = document.getElementById("forgotForm");
-    const authAlert = document.getElementById("authAlert");
-    const navAuthBtn = document.getElementById("navAuthBtn");
-
-    // Helper: Display Alert inside Modal
-    function showAuthAlert(message, type = "danger") {
-        if (!authAlert) return;
-        authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`;
-        authAlert.textContent = message;
     }
-
-    // Helper: Check current session & adjust Navbar Button
-    async function checkUserSession() {
-        if (!supabase || !navAuthBtn) return;
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-            const userEmail = session.user.email;
-            // Check if logged-in user is Matthew (The Admin!)
-            const isAdmin = userEmail.toLowerCase() === "matthew.keah@strathmore.edu";
-            
-            navAuthBtn.innerHTML = isAdmin 
-                ? `<i class="bi bi-shield-lock-fill text-danger me-1"></i> Admin Portal`
-                : `<i class="bi bi-person-check-fill text-success me-1"></i> My Account`;
-            navAuthBtn.classList.replace("btn-outline-warning", "btn-warning");
-            navAuthBtn.classList.add("text-dark", "fw-bold");
-            
-            // Store role for UI checks
-            sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            sessionStorage.setItem("kcpo_user", userEmail);
-        } else {
-            sessionStorage.removeItem("kcpo_role");
-            sessionStorage.removeItem("kcpo_user");
-        }
-    }
-
-    // 1. SIGN IN ACTION
-    if (signInForm && supabase) {
-        signInForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Authenticating...", "info");
-            const email = document.getElementById("signInEmail").value.trim();
-            const password = document.getElementById("signInPassword").value;
-
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) {
-                showAuthAlert(error.message, "danger");
-            } else {
-                showAuthAlert("Welcome back! Loading portal...", "success");
-                await checkUserSession();
-                setTimeout(() => {
-                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
-                    if(modalInstance) modalInstance.hide();
-                    window.location.reload(); 
-                }, 1000);
-            }
-        });
-    }
-
-    // 2. SIGN UP ACTION (New Member)
-    if (signUpForm && supabase) {
-        signUpForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Creating account...", "info");
-            const name = document.getElementById("signUpName").value.trim();
-            const email = document.getElementById("signUpEmail").value.trim();
-            const password = document.getElementById("signUpPassword").value;
-
-            const { error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: { data: { full_name: name } }
-            });
-
-            if (error) {
-                showAuthAlert(error.message, "danger");
-            } else {
-                showAuthAlert("Account created! Check your email to verify, or try signing in.", "success");
-                signUpForm.reset();
-            }
-        });
-    }
-
-    // 3. FORGOT PASSWORD ACTION
-    if (forgotForm && supabase) {
-        forgotForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Sending reset link...", "info");
-            const email = document.getElementById("forgotEmail").value.trim();
-
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: window.location.origin + "/index.html"
-            });
-
-            if (error) {
-                showAuthAlert(error.message, "danger");
-            } else {
-                showAuthAlert("Password reset link sent to your email!", "success");
-                forgotForm.reset();
-            }
-        });
-    }
-
-    // Run session check when page loads
-    checkUserSession();
 });
-console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
 
-// ============================================================================
-// SUPABASE AUTHENTICATION MODULE (With 6-Digit OTP Email Verification)
-// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 3. SUPABASE AUTHENTICATION MODULE (Global 6-Digit OTP Email Verification)
+// ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
+    console.log("KCPO Diagnostics: Initializing Authentication Module globally...");
+
     const signInForm = document.getElementById("signInForm");
     const signUpForm = document.getElementById("signUpForm");
     const forgotForm = document.getElementById("forgotForm");
@@ -379,7 +251,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const authAlert = document.getElementById("authAlert");
     const navAuthBtn = document.getElementById("navAuthBtn");
 
-    // We store the user's email temporarily while they check their inbox for the code
     let currentAuthEmail = "";
 
     // Helper: Display Alert inside Modal
@@ -387,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!authAlert) return;
         authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`;
         authAlert.textContent = message;
+        console.log(`KCPO UI Alert (${type}): ${message}`);
     }
 
     // Helper: Check current session & adjust Navbar Button
@@ -410,6 +282,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             sessionStorage.removeItem("kcpo_role");
             sessionStorage.removeItem("kcpo_user");
+            console.log("KCPO Auth: No active user session.");
         }
     }
 
@@ -417,6 +290,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (signInForm && supabase) {
         signInForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            console.log("KCPO Diagnostics: 'Sign In' button clicked!");
             showAuthAlert("Authenticating...", "info");
             const email = document.getElementById("signInEmail").value.trim();
             const password = document.getElementById("signInPassword").value;
@@ -429,7 +303,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 await checkUserSession();
                 setTimeout(() => {
                     const modalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
-                    if(modalInstance) modalInstance.hide();
+                    if (modalInstance) modalInstance.hide();
                     window.location.reload(); 
                 }, 1000);
             }
@@ -440,6 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (signUpForm && supabase) {
         signUpForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            console.log("KCPO Diagnostics: 'Register' button clicked!");
             showAuthAlert("Sending verification code to email...", "info");
             const name = document.getElementById("signUpName").value.trim();
             const email = document.getElementById("signUpEmail").value.trim();
@@ -454,10 +329,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (error) {
                 showAuthAlert(error.message, "danger");
             } else {
-                currentAuthEmail = email; // Save email for Step 4!
+                currentAuthEmail = email; 
                 showAuthAlert("Account created! We just emailed you a 6-digit code.", "success");
                 
-                // Hide sign-up form and reveal the Verification Code input box
                 signUpForm.classList.add("d-none");
                 const otpSec = document.getElementById("otpSection");
                 if (otpSec) otpSec.classList.remove("d-none");
@@ -469,9 +343,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (otpForm && supabase) {
         otpForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            console.log("KCPO Diagnostics: 'Verify' button clicked!");
             showAuthAlert("Verifying code...", "info");
             
-            // Grabs the code and removes any accidental spaces the user typed
             const token = document.getElementById("otpCode").value.replace(/\s+/g, '').trim();
 
             const { data, error } = await supabase.auth.verifyOtp({
@@ -512,8 +386,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Run session check when page loads
+    // Check session on load
     checkUserSession();
 });
-    }
-    
