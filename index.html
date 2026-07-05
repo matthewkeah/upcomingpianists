@@ -81,6 +81,12 @@
                     <li class="nav-item"><a class="nav-link" href="archive.html">Resource Log</a></li>
                     <li class="nav-item"><a class="nav-link" href="register.html">Action Plan</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.html">Communications</a></li>
+                
+                    <li class="nav-item ms-lg-3">
+                        <button class="btn btn-outline-warning btn-sm px-3 my-1" data-bs-toggle="modal" data-bs-target="#authModal" id="navAuthBtn">
+                            <i class="bi bi-person-circle me-1"></i> Member Sign In
+                        </button>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -173,6 +179,81 @@
             </div>
         </section>
     </main>
+
+<div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-black border border-warning">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title font-serif accent-gold" id="authModalTitle">KCPO Member Portal</h5>
+                    <button type="button" class="btn-close m-0" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    
+                    <ul class="nav nav-tabs border-secondary mb-4" id="authTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active text-light bg-transparent border-0 border-bottom border-warning" id="signin-tab" data-bs-toggle="tab" data-bs-target="#signin-pane" type="button" role="tab">Sign In</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link text-secondary bg-transparent border-0" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup-pane" type="button" role="tab">New Member</button>
+                        </li>
+                        <li class="nav-item ms-auto" role="presentation">
+                            <button class="nav-link text-muted small bg-transparent border-0" id="forgot-tab" data-bs-toggle="tab" data-bs-target="#forgot-pane" type="button" role="tab">Forgot Password?</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content" id="authTabsContent">
+                        
+                        <div class="tab-pane fade show active" id="signin-pane" role="tabpanel">
+                            <form id="signInForm" novalidate>
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted">Email Address</label>
+                                    <input type="email" class="form-control bg-dark text-light border-secondary" id="signInEmail" required placeholder="matthew.keah@strathmore.edu">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label small text-muted">Password</label>
+                                    <input type="password" class="form-control bg-dark text-light border-secondary" id="signInPassword" required placeholder="••••••••">
+                                </div>
+                                <button type="submit" class="btn btn-warning w-100 fw-bold py-2">Sign In to Portal</button>
+                            </form>
+                        </div>
+
+                        <div class="tab-pane fade" id="signup-pane" role="tabpanel">
+                            <form id="signUpForm" novalidate>
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted">Full Name</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="signUpName" required placeholder="e.g., Leon Jabali">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted">Email Address</label>
+                                    <input type="email" class="form-control bg-dark text-light border-secondary" id="signUpEmail" required placeholder="pianist@example.com">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label small text-muted">Create Password</label>
+                                    <input type="password" class="form-control bg-dark text-light border-secondary" id="signUpPassword" required placeholder="Min. 6 characters">
+                                </div>
+                                <button type="submit" class="btn btn-outline-warning w-100 fw-bold py-2">Register for KCPO</button>
+                            </form>
+                        </div>
+
+                        <div class="tab-pane fade" id="forgot-pane" role="tabpanel">
+                            <form id="forgotForm" novalidate>
+                                <p class="text-secondary small mb-3">Enter your registered email address and we will send you a secure password reset link.</p>
+                                <div class="mb-4">
+                                    <label class="form-label small text-muted">Email Address</label>
+                                    <input type="email" class="form-control bg-dark text-light border-secondary" id="forgotEmail" required placeholder="matthew.keah@strathmore.edu">
+                                </div>
+                                <button type="submit" class="btn btn-secondary w-100 py-2">Send Reset Link</button>
+                            </form>
+                        </div>
+
+                    </div>
+
+                    <div id="authAlert" class="alert mt-3 mb-0 d-none small py-2" role="alert"></div>
+
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ================= 3. GLOBAL FOOTER ================= -->
     <footer class="bg-black text-center py-4 small text-muted">

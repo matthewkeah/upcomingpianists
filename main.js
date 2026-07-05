@@ -254,5 +254,116 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         console.log("KCPO Logic: Executive Faculty cards rendered successfully.");
 
+        // ============================================================================
+// SUPABASE AUTHENTICATION MODULE (Sign Up, Sign In, Reset, Role Check)
+// ============================================================================
+document.addEventListener("DOMContentLoaded", () => {
+    const signInForm = document.getElementById("signInForm");
+    const signUpForm = document.getElementById("signUpForm");
+    const forgotForm = document.getElementById("forgotForm");
+    const authAlert = document.getElementById("authAlert");
+    const navAuthBtn = document.getElementById("navAuthBtn");
+
+    // Helper: Display Alert inside Modal
+    function showAuthAlert(message, type = "danger") {
+        if (!authAlert) return;
+        authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`;
+        authAlert.textContent = message;
+    }
+
+    // Helper: Check current session & adjust Navbar Button
+    async function checkUserSession() {
+        if (!supabase || !navAuthBtn) return;
+        const { data: { session } } = await supabase.auth.getSession();
         
+        if (session) {
+            const userEmail = session.user.email;
+            // Check if logged-in user is Matthew (The Admin!)
+            const isAdmin = userEmail.toLowerCase() === "matthew.keah@strathmore.edu";
+            
+            navAuthBtn.innerHTML = isAdmin 
+                ? `<i class="bi bi-shield-lock-fill text-danger me-1"></i> Admin Portal`
+                : `<i class="bi bi-person-check-fill text-success me-1"></i> My Account`;
+            navAuthBtn.classList.replace("btn-outline-warning", "btn-warning");
+            navAuthBtn.classList.add("text-dark", "fw-bold");
+            
+            // Store role for UI checks
+            sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
+            sessionStorage.setItem("kcpo_user", userEmail);
+        } else {
+            sessionStorage.removeItem("kcpo_role");
+            sessionStorage.removeItem("kcpo_user");
+        }
+    }
+
+    // 1. SIGN IN ACTION
+    if (signInForm && supabase) {
+        signInForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Authenticating...", "info");
+            const email = document.getElementById("signInEmail").value.trim();
+            const password = document.getElementById("signInPassword").value;
+
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                showAuthAlert("Welcome back! Loading portal...", "success");
+                await checkUserSession();
+                setTimeout(() => {
+                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
+                    if(modalInstance) modalInstance.hide();
+                    window.location.reload(); 
+                }, 1000);
+            }
+        });
+    }
+
+    // 2. SIGN UP ACTION (New Member)
+    if (signUpForm && supabase) {
+        signUpForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Creating account...", "info");
+            const name = document.getElementById("signUpName").value.trim();
+            const email = document.getElementById("signUpEmail").value.trim();
+            const password = document.getElementById("signUpPassword").value;
+
+            const { error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: { data: { full_name: name } }
+            });
+
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                showAuthAlert("Account created! Check your email to verify, or try signing in.", "success");
+                signUpForm.reset();
+            }
+        });
+    }
+
+    // 3. FORGOT PASSWORD ACTION
+    if (forgotForm && supabase) {
+        forgotForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            showAuthAlert("Sending reset link...", "info");
+            const email = document.getElementById("forgotEmail").value.trim();
+
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + "/index.html"
+            });
+
+            if (error) {
+                showAuthAlert(error.message, "danger");
+            } else {
+                showAuthAlert("Password reset link sent to your email!", "success");
+                forgotForm.reset();
+            }
+        });
+    }
+
+    // Run session check when page loads
+    checkUserSession();
+});
     }
