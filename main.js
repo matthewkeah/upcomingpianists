@@ -7,7 +7,7 @@
 // ----------------------------------------------------------------------------
 // 0. CLOUD BACKEND INITIALIZATION (SUPABASE)
 // ----------------------------------------------------------------------------
-const SUPABASE_URL = "https://ovinidzsqzakofhjpwgl.supabase.co/rest/v1/"; 
+const SUPABASE_URL = "https://ovinidzsqzakofhjpwgl.supabase.co"; 
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92aW5pZHpzcXpha29maGpwd2dsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyODE2OTcsImV4cCI6MjA5ODg1NzY5N30.x_8g68lxyM73K-3QJEOT1B7-fX9jZKmN20bWjPxhEtA";
 
 // Create the Supabase client connection
