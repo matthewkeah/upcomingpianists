@@ -247,6 +247,17 @@
                         </div>
 
                     </div>
+                    <div id="otpSection" class="d-none mt-4 border-top border-secondary pt-3">
+    <h6 class="font-serif text-warning">Verify Your Email</h6>
+    <p class="text-secondary small">We sent a 6-digit verification code to your email. Enter it below to complete your sign-in:</p>
+    <form id="otpForm" novalidate>
+        <div class="mb-3">
+            <input type="text" class="form-control bg-dark text-light border-warning text-center font-monospace fs-4" id="otpCode" placeholder="1 2 3 4 5 6" maxlength="6" required>
+        </div>
+        <button type="submit" class="btn btn-success w-100 fw-bold py-2">Verify & Enter Portal</button>
+                    </form>
+                    </div>
+
 
                     <div id="authAlert" class="alert mt-3 mb-0 d-none small py-2" role="alert"></div>
 
