@@ -101,6 +101,42 @@
         </section>
     </main>
 
+<section class="mt-5 pt-5" style="border-top: 1px solid var(--line);">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="accent-gold">This Month's Repertoire</h3>
+        <!-- Only visible to logged-in scheduled performers -->
+        <button id="uploadScoreBtn" class="btn btn-sm btn-outline-gold d-none" data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="bi bi-file-earmark-pdf me-1"></i> Submit PDF Score
+        </button>
+    </div>
+    
+    <!-- Dynamic Repertoire List -->
+    <div class="row g-4" id="repertoireList">
+        <!-- JS will populate this area with performer cards and score download links -->
+    </div>
+</section>
+
+<!-- PDF Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content kcpo-card">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title">Upload Score</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="scoreUploadForm">
+                    <div class="mb-3">
+                        <label for="pdfFile" class="form-label text-muted-c small">Select PDF File *</label>
+                        <input class="form-control field" type="file" id="pdfFile" accept="application/pdf" required>
+                    </div>
+                    <button type="submit" class="btn btn-gold w-100">Upload to Repository</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
     <footer class="site-footer text-center py-4 small border-top">
         <div class="container">
             <p class="mb-0">&copy; 2026 Pianists' Circle | Kenya Classical Pianists' Organization (KCPO).</p>

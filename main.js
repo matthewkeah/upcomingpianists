@@ -333,3 +333,97 @@ document.addEventListener("DOMContentLoaded", () => {
     initAuth();
     initRegistrationForm();
 });
+
+// main.js
+
+// 1. Define Core Admins (Replace with your actual emails)
+const CORE_ADMINS = [
+    "matthew.keah@strathmore.edu",
+    "admin2@example.com", 
+    "admin3@example.com"
+];
+
+// 2. Authentication & Code Verification Logic
+async function sendVerificationCode(email) {
+    // Generate a 6-digit code
+    const authCode = Math.floor(100000 + Math.random() * 900000);
+    
+    // TODO: Save 'authCode' to your database against this 'email' with an expiration timestamp
+    // TODO: Trigger your backend to send an email containing 'authCode' to the user
+    
+    console.log(`Verification code sent to ${email}`);
+    return true; 
+}
+
+async function verifyCodeAndLogin(email, userEnteredCode) {
+    // TODO: Fetch the saved code from your database for this email
+    const dbCode = "123456"; // Placeholder for fetched code
+    
+    if (userEnteredCode === dbCode) {
+        // Code matches - authenticate user
+        let userRole = "member";
+        
+        // Check if they are a core admin
+        if (CORE_ADMINS.includes(email)) {
+            userRole = "core_admin";
+        } else {
+            // TODO: Check database if this user was promoted to rotational admin
+            // const dbRole = await checkUserRoleInDatabase(email);
+            // if (dbRole === "admin") userRole = "admin";
+        }
+        
+        // Store session data (Preferably use secure tokens/cookies in production)
+        localStorage.setItem("kcpo_user", JSON.stringify({ email: email, role: userRole }));
+        checkAuthStatus();
+        return true;
+    }
+    return false;
+}
+
+// 3. Admin Panel Functions
+function loadAdminDashboard() {
+    const user = JSON.parse(localStorage.getItem("kcpo_user"));
+    
+    // Ensure only admins can view the dashboard
+    if (user && (user.role === "core_admin" || user.role === "admin")) {
+        document.getElementById("accessDeniedMsg").classList.add("d-none");
+        document.getElementById("adminContent").classList.remove("d-none");
+        
+        fetchUsersForAdmin();
+        fetchFeedbackForAdmin();
+    } else {
+        document.getElementById("accessDeniedMsg").innerHTML = "<h3 class='text-danger'>Access Restricted</h3><p class='text-muted-c'>You do not have the required permissions.</p>";
+    }
+}
+
+async function promoteUserToAdmin(userEmail) {
+    // TODO: Update user role in your database to 'admin'
+    console.log(`${userEmail} promoted to rotational admin.`);
+    // Refresh the table UI
+    fetchUsersForAdmin();
+}
+
+async function deleteFeedback(feedbackId) {
+    // TODO: Send delete request to database for this feedback ID
+    console.log(`Feedback ${feedbackId} deleted.`);
+    fetchFeedbackForAdmin();
+}
+
+// 4. PDF Upload & Repertoire
+document.getElementById('scoreUploadForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('pdfFile');
+    const file = fileInput.files[0];
+    
+    if (file && file.type === "application/pdf") {
+        // TODO: Send file to your storage bucket (e.g., Firebase Storage, AWS S3)
+        // TODO: Save the returned file URL to the database under this month's repertoire
+        console.log(`Uploading ${file.name}...`);
+        
+        // Close modal on success
+        bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+        fileInput.value = "";
+    } else {
+        alert("Please upload a valid PDF file.");
+    }
+});
