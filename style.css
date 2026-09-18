@@ -1,53 +1,227 @@
-/*  GLOBAL BRAND STYLING  */
-:root {
-    --kcpo-gold: #D4AF37; 
-    --dark-surface: #121212;
-    --dark-bg: #0a0a0a;
+/* ============================================================================
+   KCPO — GLOBAL STYLESHEET
+   Theme: "Recital Hall" — warm espresso + brass gold + curtain burgundy.
+   Two modes (dark/light) driven by [data-bs-theme] on <html>, plus a fixed
+   dark "brand bar" used for the header, footer and accent bands so the
+   identity holds steady no matter which mode a visitor is in.
+   ============================================================================ */
+
+/* ---- Fonts: Fraunces (display, has some warmth/personality) + Inter (body) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap');
+
+/* ---- Color tokens ---------------------------------------------------- */
+:root,
+[data-bs-theme="dark"] {
+    --bg: #16110d;
+    --bg-elevated: #1f1811;
+    --bg-elevated-2: #241c14;
+    --ink: #f1e9d8;
+    --ink-soft: #c7b9a0;
+    --ink-faint: #8d8070;
+    --line: #382c20;
+    --brand-bar: #100c09;
+    --gold: #c9a24d;
+    --gold-strong: #e2bb63;
+    --burgundy: #9a3a45;
+    --burgundy-soft: rgba(154, 58, 69, 0.16);
+    --shadow-soft: 0 20px 45px rgba(0, 0, 0, 0.45);
+    --shadow-lift: 0 16px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(201, 162, 77, 0.12);
+    --field-bg: #221a13;
+    color-scheme: dark;
 }
+
+[data-bs-theme="light"] {
+    --bg: #faf6ee;
+    --bg-elevated: #ffffff;
+    --bg-elevated-2: #f3ecdd;
+    --ink: #241b12;
+    --ink-soft: #5b4d3b;
+    --ink-faint: #8a7a63;
+    --line: #e3d7bf;
+    --brand-bar: #100c09;
+    --gold: #9c7527;
+    --gold-strong: #7e5e1d;
+    --burgundy: #7c303c;
+    --burgundy-soft: rgba(124, 48, 60, 0.08);
+    --shadow-soft: 0 20px 45px rgba(85, 65, 35, 0.1);
+    --shadow-lift: 0 16px 30px rgba(85, 65, 35, 0.14), 0 0 0 1px rgba(156, 117, 39, 0.15);
+    --field-bg: #ffffff;
+    color-scheme: light;
+}
+
+/* ---- Base -------------------------------------------------------------- */
+* { -webkit-font-smoothing: antialiased; }
+
+html { scroll-behavior: smooth; }
 
 body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background-color: var(--dark-bg);
-    color: #f8f9fa;
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-main { 
-    flex: 1; 
+main { flex: 1; }
+
+::selection { background: var(--burgundy); color: #fff; }
+
+a { color: var(--gold-strong); }
+a:hover { color: var(--gold); }
+
+.font-serif,
+.navbar-brand,
+h1, h2, h3, h4, h5,
+.display-4, .display-6 {
+    font-family: 'Fraunces', Georgia, serif;
 }
 
-/* Typograph */
-.navbar-brand, .font-serif {
-    font-family: 'Georgia', serif;
+h1, h2, h3, h4, h5, .display-4, .display-6 { color: var(--ink); font-weight: 600; }
+
+.accent-gold { color: var(--gold-strong); }
+.accent-burgundy { color: var(--burgundy); }
+
+.lede {
+    color: var(--ink-soft);
+    max-width: 46rem;
+}
+
+.eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    color: var(--ink-faint);
+    font-weight: 500;
+}
+
+.text-muted-c { color: var(--ink-soft) !important; }
+.text-faint-c { color: var(--ink-faint) !important; }
+
+hr.divider, .divider-line {
+    border: none;
+    border-top: 1px solid var(--line);
+}
+
+/* ---- Header / footer / brand bands (always the fixed dark brand color) - */
+.brand-bar {
+    background-color: var(--brand-bar);
+    border-color: rgba(201, 162, 77, 0.18) !important;
 }
 
 .navbar-brand {
-    letter-spacing: 1.5px;
-    color: var(--kcpo-gold) !important;
+    letter-spacing: 1px;
+    color: var(--gold-strong) !important;
+    font-weight: 600;
 }
 
-.accent-gold {
-    color: var(--kcpo-gold);
+.navbar .nav-link {
+    color: #d9cdb8;
+    font-size: 0.94rem;
 }
 
-/* UI Cards */
+.navbar .nav-link:hover,
+.navbar .nav-link.active {
+    color: var(--gold-strong);
+}
+
+.site-footer {
+    background-color: var(--brand-bar);
+    color: #a8977c;
+}
+
+.site-footer .accent-gold { color: var(--gold-strong); }
+
+/* ---- Theme toggle -------------------------------------------------- */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(201, 162, 77, 0.35);
+    background: transparent;
+    color: var(--gold-strong);
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.theme-toggle:hover {
+    background-color: rgba(201, 162, 77, 0.12);
+    transform: rotate(12deg);
+}
+
+/* ---- Hero (index) ---------------------------------------------------- */
+.hero-section {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(16, 12, 9, 0.88) 0%, rgba(16, 12, 9, 0.97) 65%, var(--bg) 100%),
+        url('https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?auto=format&fit=crop&w=1600&q=80');
+    background-size: cover;
+    background-position: center 30%;
+    color: #f1e9d8;
+}
+
+.hero-section .lede { color: #cabfa8; }
+
+/* ---- Buttons ----------------------------------------------------------- */
+.btn-gold {
+    background-color: var(--gold);
+    border: 1px solid var(--gold);
+    color: #17120d;
+    font-weight: 600;
+}
+.btn-gold:hover { background-color: var(--gold-strong); border-color: var(--gold-strong); color: #17120d; }
+
+.btn-outline-gold {
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold-strong);
+}
+.btn-outline-gold:hover { background-color: var(--gold); color: #17120d; }
+
+.btn-outline-line {
+    border: 1px solid var(--line);
+    color: var(--ink);
+    background: transparent;
+}
+.btn-outline-line:hover { border-color: var(--gold); color: var(--gold-strong); }
+
+.btn-burgundy {
+    background-color: var(--burgundy);
+    border: 1px solid var(--burgundy);
+    color: #f5e8ea;
+    font-weight: 600;
+}
+.btn-burgundy:hover { filter: brightness(1.1); }
+
+/* ---- Cards --------------------------------------------------------- */
 .kcpo-card {
-    background-color: var(--dark-surface);
-    border: 1px solid #262626;
-    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .kcpo-card:hover {
-    transform: translateY(-5px);
-    border-color: var(--kcpo-gold);
-    box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+    transform: translateY(-4px);
+    border-color: var(--gold);
+    box-shadow: var(--shadow-soft);
 }
 
-/*  EXECUTIVE PROFILE CARDS FOR (tutors.html)  */
+.feature-card {
+    background-color: var(--bg-elevated-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--gold);
+    border-radius: 6px;
+    transition: transform 0.25s ease, border-color 0.25s ease;
+}
+.feature-card:hover { transform: translateY(-4px); border-left-color: var(--burgundy); }
+
+/* ---- Profile cards (faculty / members) ------------------------------ */
 .profile-card {
-    background: linear-gradient(145deg, #141414, #0a0a0a);
-    border: 1px solid #262626;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
     border-radius: 12px;
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -55,13 +229,13 @@ main {
 
 .profile-card:hover {
     transform: translateY(-8px);
-    border-color: var(--kcpo-gold);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(212, 175, 55, 0.2);
+    border-color: var(--gold);
+    box-shadow: var(--shadow-lift);
 }
 
 .avatar-container {
     width: 140px;
-    height: 180px; /* Changed to a vertical portrait box */
+    height: 180px;
     margin: 1.5rem auto 1rem auto;
     position: relative;
     display: flex;
@@ -72,29 +246,125 @@ main {
 .avatar-pfp {
     width: 100%;
     height: 100%;
-    border-radius: 8px; /* Changed from circle  rectangle */
+    border-radius: 8px;
     object-fit: cover;
-    object-position: top center; /* Prevents forehead cropping */
-    border: 2px solid #333;
-    background-color: #222;
+    object-position: top center;
+    border: 2px solid var(--line);
+    background-color: var(--bg-elevated-2);
 }
 
 .default-avatar-icon {
-    font-size: 6.5rem; 
-    color: #444;
+    font-size: 6.5rem;
+    color: var(--line);
     line-height: 1;
     transition: color 0.3s ease;
 }
 
-.profile-card:hover .avatar-pfp {
-    border-color: var(--kcpo-gold);
-}
+.profile-card:hover .avatar-pfp,
+.profile-card:hover .default-avatar-icon { color: var(--gold); border-color: var(--gold); }
 
-/* Elegant framing for member titles */
 .member-role-tag {
-    font-size: 0.75rem;
-    letter-spacing: 2px;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--kcpo-gold);
+    color: var(--gold-strong);
     font-weight: 700;
 }
+
+/* ---- Tables ---------------------------------------------------------- */
+.table-kcpo {
+    --bs-table-bg: transparent;
+    color: var(--ink);
+    border-color: var(--line);
+}
+.table-kcpo thead th {
+    color: var(--gold-strong);
+    border-color: var(--line);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.table-kcpo td, .table-kcpo th {
+    border-color: var(--line);
+    vertical-align: middle;
+}
+.table-kcpo tbody tr:hover { background-color: var(--bg-elevated); }
+
+/* ---- Forms ------------------------------------------------------------- */
+.field {
+    background-color: var(--field-bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+}
+.field:focus {
+    background-color: var(--field-bg);
+    color: var(--ink);
+    border-color: var(--gold);
+    box-shadow: 0 0 0 0.2rem var(--burgundy-soft);
+}
+.field::placeholder { color: var(--ink-faint); }
+
+.form-label { color: var(--ink); font-weight: 500; }
+
+.form-check-input.field { border-radius: 4px; }
+.form-check-input.field:checked { background-color: var(--gold); border-color: var(--gold); }
+
+/* ---- Accordion (Communications FAQ) ------------------------------------ */
+.accordion-kcpo .accordion-item {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line);
+}
+.accordion-kcpo .accordion-button {
+    background: transparent;
+    color: var(--ink);
+    font-family: 'Fraunces', serif;
+    box-shadow: none;
+    padding-left: 0;
+}
+.accordion-kcpo .accordion-button:not(.collapsed) { color: var(--gold-strong); }
+.accordion-kcpo .accordion-button::after { filter: none; }
+.accordion-kcpo .accordion-body { color: var(--ink-soft); padding-left: 0; }
+
+/* ---- Modal (auth) ------------------------------------------------------ */
+.modal-kcpo .modal-content {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--gold);
+    color: var(--ink);
+}
+.modal-kcpo .modal-header,
+.modal-kcpo .nav-tabs { border-color: var(--line); }
+.modal-kcpo .nav-link { color: var(--ink-faint); }
+.modal-kcpo .nav-link.active {
+    color: var(--gold-strong);
+    border-bottom: 2px solid var(--gold) !important;
+}
+
+/* ---- Badges -------------------------------------------------------- */
+.badge-kcpo {
+    background-color: var(--bg-elevated-2);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-weight: 500;
+}
+.badge-time {
+    background-color: var(--burgundy-soft);
+    color: var(--burgundy);
+    font-weight: 600;
+}
+[data-bs-theme="dark"] .badge-time { color: #e8a3ac; }
+
+/* ---- Contact cards --------------------------------------------------- */
+.contact-icon { font-size: 2.2rem; }
+
+/* ---- Utility: soft section background for bands within a light page --- */
+.band {
+    background-color: var(--brand-bar);
+    color: #ddd0b9;
+    border-top: 1px solid rgba(201, 162, 77, 0.15);
+    border-bottom: 1px solid rgba(201, 162, 77, 0.15);
+}
+.band .accent-gold { color: var(--gold-strong); }
+.band p { color: #b4a488; }
+
+/* ---- Status alert (form feedback) -------------------------------------- */
+.status-alert { border-radius: 8px; border: 1px solid var(--line); }

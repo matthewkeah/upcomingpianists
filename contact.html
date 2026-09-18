@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
-    
+
 <head>
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('kcpo-theme');
+                if (t) document.documentElement.setAttribute('data-bs-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Communications | Kenya Classical Pianists' Organization</title>
@@ -11,23 +19,26 @@
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-black border-bottom border-secondary">
+    <nav class="navbar navbar-expand-lg navbar-dark brand-bar border-bottom">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.html">PIANISTS' CIRCLE <span class="fs-6 fw-normal text-muted">| KCPO</span></a>
+            <a class="navbar-brand fw-bold" href="index.html">PIANISTS' CIRCLE <span class="fs-6 fw-normal text-muted-c">| KCPO</span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
                     <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                     <li class="nav-item"><a class="nav-link" href="about.html">About Framework</a></li>
                     <li class="nav-item"><a class="nav-link" href="masterclasses.html">Sessions</a></li>
-                    <li class="nav-item"><a class="nav-link" href="tutors.html">Membership Layer</a></li>
-                    <li class="nav-item"><a class="nav-link" href="archive.html">Resource Log</a></li>
                     <li class="nav-item"><a class="nav-link" href="register.html">Action Plan</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.html">Communications</a></li>
-                    <li class="nav-item ms-lg-3">
-                        <button class="btn btn-outline-warning btn-sm px-3 my-1" data-bs-toggle="modal" data-bs-target="#authModal" id="navAuthBtn">
+                    <li class="nav-item ms-lg-2">
+                        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark mode" title="Toggle theme">
+                            <i class="bi bi-sun-fill" id="themeIcon"></i>
+                        </button>
+                    </li>
+                    <li class="nav-item ms-lg-3 my-2 my-lg-0">
+                        <button class="btn btn-outline-gold btn-sm px-3" data-bs-toggle="modal" data-bs-target="#authModal" id="navAuthBtn">
                             <i class="bi bi-person-circle me-1"></i> Member Sign In
                         </button>
                     </li>
@@ -38,66 +49,66 @@
 
     <main class="container py-5">
         <section class="text-center mb-5">
-            <span class="text-uppercase tracking-widest text-muted small">Network Architecture</span>
-            <h1 class="display-4 font-serif accent-gold mt-2">Internal Communications</h1>
-            <p class="lead text-secondary col-lg-8 mx-auto">We utilize a deliberate, low-noise communication strategy to ensure messages are addressed rather than ignored.</p>
+            <span class="eyebrow text-uppercase">Network architecture</span>
+            <h1 class="display-4 accent-gold mt-2">Internal communications</h1>
+            <p class="lead lede mx-auto">A deliberate, low-noise communication strategy, so messages get addressed instead of ignored.</p>
         </section>
 
         <div class="row g-5">
             <div class="col-lg-6">
-                <h3 class="font-serif accent-gold mb-4 border-bottom border-secondary pb-2">The Two-Group System</h3>
-                
+                <h3 class="accent-gold mb-4 pb-2" style="border-bottom: 1px solid var(--line);">The two-group system</h3>
+
                 <div class="card kcpo-card p-4 mb-4">
-                    <h5 class="text-light fw-bold mb-2"><i class="bi bi-whatsapp text-success me-2"></i>The Leaders Group</h5>
-                    <p class="text-secondary small">A strict decision-making space. Every message must name the person it requires a response from. Silence is not consent. Agendas are posted here 3 weeks prior to any session.</p>
+                    <h5 class="fw-bold mb-2"><i class="bi bi-whatsapp text-success me-2"></i>The Leaders group</h5>
+                    <p class="text-muted-c small">A strict decision-making space. Every message must name the person it needs a response from. Silence is not consent. Agendas go up here 3 weeks before any session.</p>
                 </div>
 
                 <div class="card kcpo-card p-4">
-                    <h5 class="text-light fw-bold mb-2"><i class="bi bi-chat-square-text text-primary me-2"></i>The General Hub</h5>
-                    <p class="text-secondary small">The public face of the community. We limit broadcast-style administrative announcements and use this space strictly for repertoire celebration, session highlights, and constructive artistic discourse.</p>
+                    <h5 class="fw-bold mb-2"><i class="bi bi-chat-square-text accent-gold me-2"></i>The General Hub</h5>
+                    <p class="text-muted-c small">The public face of the community. We keep broadcast-style administrative announcements to a minimum, and use this space for repertoire celebration, session highlights, and artistic discourse.</p>
                 </div>
             </div>
 
             <div class="col-lg-6">
-                <h3 class="font-serif accent-gold mb-4 border-bottom border-secondary pb-2">Frequently Asked Questions</h3>
-                
-                <div class="accordion accordion-flush bg-transparent" id="faqAccordion">
-                    
-                    <div class="accordion-item bg-transparent border-secondary">
+                <h3 class="accent-gold mb-4 pb-2" style="border-bottom: 1px solid var(--line);">Frequently asked questions</h3>
+
+                <div class="accordion accordion-flush accordion-kcpo" id="faqAccordion">
+
+                    <div class="accordion-item">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed bg-transparent text-light font-serif" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
                                 How do I deal with missed sessions?
                             </button>
                         </h2>
                         <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                            <div class="accordion-body text-secondary small">
-                                Attendance is a trust signal, not a punishment system. If you miss two consecutive sessions, the People's Coordinator will check in. Missing four moves you to Associate status. There is no shame in stepping back when life gets busy.
+                            <div class="accordion-body small">
+                                Attendance is a trust signal, not a punishment system. Miss two sessions in a row and the People's Coordinator will check in. Miss four and you move to Associate status — no shame in stepping back when life gets busy.
                             </div>
                         </div>
                     </div>
 
-                    <div class="accordion-item bg-transparent border-secondary">
+                    <div class="accordion-item">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed bg-transparent text-light font-serif" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
                                 Are there membership dues?
                             </button>
                         </h2>
                         <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                            <div class="accordion-body text-secondary small">
-                                Currently, there are no formal financial structures. A monthly dues system will only be introduced once the group successfully maintains 3 consecutive months of high-value active sessions.
+                            <div class="accordion-body small">
+                                Not yet. A monthly dues system only kicks in once the group has kept up 3 consecutive months of high-value active sessions.
                             </div>
                         </div>
                     </div>
 
-                    <div class="accordion-item bg-transparent border-secondary">
+                    <div class="accordion-item">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed bg-transparent text-light font-serif" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
                                 Who is the overall leader?
                             </button>
                         </h2>
                         <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                            <div class="accordion-body text-secondary small">
-                                KCPO operates on distributed ownership. We have a Convener, not a boss. Leadership roles are rotational and no role is held for more than one year without a renewal vote from the active core.
+                            <div class="accordion-body small">
+                                Nobody, by design. KCPO runs on distributed ownership — a Convener, not a boss. Leadership roles rotate and no one holds a role for more than a year without a renewal vote from the active core.
                             </div>
                         </div>
                     </div>
@@ -105,22 +116,23 @@
                 </div>
             </div>
         </div>
-        <section class="mt-5 border-top border-secondary pt-5">
+
+        <section class="mt-5 pt-5" style="border-top: 1px solid var(--line);">
             <div class="text-center mb-5">
-                <h3 class="font-serif accent-gold">Direct Inquiries</h3>
-                <p class="text-secondary small">Reach out directly to the Masterclass Coordinator for urgent matters or collaborative opportunities.</p>
+                <h3 class="accent-gold">Direct inquiries</h3>
+                <p class="text-muted-c small">Reach out directly to the Masterclass Coordinator for urgent matters or collaborative opportunities.</p>
             </div>
-            
+
             <div class="row justify-content-center g-4">
                 <div class="col-md-4">
                     <div class="card kcpo-card h-100 p-3 text-center">
                         <div class="card-body flex-column d-flex">
-                            <i class="bi bi-whatsapp fs-1 text-success mb-3"></i>
-                            <h5 class="text-light font-serif">Phone & WhatsApp</h5>
-                            <p class="text-secondary small mb-4">Available for urgent live session logistics.</p>
+                            <i class="bi bi-whatsapp contact-icon text-success mb-3"></i>
+                            <h5>Phone & WhatsApp</h5>
+                            <p class="text-muted-c small mb-4">Available for urgent live session logistics.</p>
                             <div class="mt-auto">
-                                <a href="https://wa.me/254759719836" target="_blank" class="btn btn-outline-success btn-sm w-100 mb-2">Message on WhatsApp</a>
-                                <a href="tel:+254759719836" class="btn btn-secondary btn-sm w-100"><i class="bi bi-telephone"></i> +254 759 719 836</a>
+                                <a href="https://wa.me/254759719836" target="_blank" rel="noopener" class="btn btn-outline-line btn-sm w-100 mb-2">Message on WhatsApp</a>
+                                <a href="tel:+254759719836" class="btn btn-outline-line btn-sm w-100"><i class="bi bi-telephone"></i> +254 759 719 836</a>
                             </div>
                         </div>
                     </div>
@@ -129,11 +141,11 @@
                 <div class="col-md-4">
                     <div class="card kcpo-card h-100 p-3 text-center">
                         <div class="card-body flex-column d-flex">
-                            <i class="bi bi-envelope-paper fs-1 text-warning mb-3"></i>
-                            <h5 class="text-light font-serif">Our Email</h5>
-                            <p class="text-secondary small mb-4">For formal requests and repertoire submission.</p>
+                            <i class="bi bi-envelope-paper contact-icon accent-gold mb-3"></i>
+                            <h5>Our email</h5>
+                            <p class="text-muted-c small mb-4">For formal requests and repertoire submissions.</p>
                             <div class="mt-auto">
-                                <a href="mailto:matthew.keah@strathmore.edu" class="btn btn-outline-warning btn-sm w-100">matthew.keah@strathmore.edu</a>
+                                <a href="mailto:matthew.keah@strathmore.edu" class="btn btn-outline-gold btn-sm w-100">matthew.keah@strathmore.edu</a>
                             </div>
                         </div>
                     </div>
@@ -142,11 +154,11 @@
                 <div class="col-md-4">
                     <div class="card kcpo-card h-100 p-3 text-center">
                         <div class="card-body flex-column d-flex">
-                            <i class="bi bi-instagram fs-1 text-danger mb-3"></i>
-                            <h5 class="text-light font-serif">Instagram</h5>
-                            <p class="text-secondary small mb-4">Follow for session highlights and community updates.</p>
+                            <i class="bi bi-instagram contact-icon accent-burgundy mb-3"></i>
+                            <h5>Instagram</h5>
+                            <p class="text-muted-c small mb-4">Follow for session highlights and community updates.</p>
                             <div class="mt-auto">
-                                <a href="https://instagram.com/matthewkeah" target="_blank" class="btn btn-outline-danger btn-sm w-100">@matthewkeah</a>
+                                <a href="https://instagram.com/matthewkeah" target="_blank" rel="noopener" class="btn btn-outline-line btn-sm w-100">@matthewkeah</a>
                             </div>
                         </div>
                     </div>
@@ -155,12 +167,11 @@
         </section>
     </main>
 
-    <footer class="bg-black text-center py-4 small text-muted border-top border-secondary mt-5">
+    <footer class="site-footer text-center py-4 small border-top mt-5">
         <div class="container"><p class="mb-0">&copy; 2026 Pianists' Circle | Kenya Classical Pianists' Organization (KCPO).</p></div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>

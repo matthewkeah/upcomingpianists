@@ -1,326 +1,335 @@
 /**
  * ============================================================================
- * KCPO PORTAL - CORE APPLICATION ENGINE & FIREBASE BACKEND SETUP
+ * KCPO PORTAL — APP ENGINE
+ * Loaded as a module on every page: <script type="module" src="main.js"></script>
+ * ============================================================================
+ * Sections:
+ *   1. Firebase init
+ *   2. Theme toggle (light/dark)
+ *   3. Nav active-state
+ *   4. Shared auth modal (injected once, so it works from any page)
+ *   5. Firebase Authentication (sign in / sign up / forgot password)
+ *   6. Registration form -> Firestore ("registrations" collection)
  * ============================================================================
  */
 
 // ----------------------------------------------------------------------------
-// 0. CLOUD BACKEND INITIALIZATION (FIREBASE)
+// 1. FIREBASE INIT
 // ----------------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-import { 
-    getAuth, 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
-    sendPasswordResetEmail, 
-    onAuthStateChanged 
+import {
+    getAuth,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
+    onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
-import { 
-    getFirestore, 
-    collection, 
-    getDocs, 
-    addDoc, 
-    query, 
-    orderBy, 
-    serverTimestamp 
+import {
+    getFirestore,
+    collection,
+    addDoc,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-storage.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
-  authDomain: "upcomingpianists.firebaseapp.com",
-  projectId: "upcomingpianists",
-  storageBucket: "upcomingpianists.firebasestorage.app",
-  messagingSenderId: "1016884713994",
-  appId: "1:1016884713994:web:10c02ef212572f7a605df3"
+    apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
+    authDomain: "upcomingpianists.firebaseapp.com",
+    projectId: "upcomingpianists",
+    storageBucket: "upcomingpianists.firebasestorage.app",
+    messagingSenderId: "1016884713994",
+    appId: "1:1016884713994:web:10c02ef212572f7a605df3"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
-
-console.log("KCPO Engine: Firebase Cloud Client successfully initialized!");
-
 
 // ----------------------------------------------------------------------------
-// 1. THE REPERTOIRE DATABASE (Cloud Connected & XSS Secured)
+// 2. THEME TOGGLE (persisted, applied on every page)
 // ----------------------------------------------------------------------------
-
-// SECURITY: HTML escaper to prevent Stored XSS attacks
-function escapeHTML(str) {
-    if (!str) return "No performance notes documented.";
-    return str.replace(/[&<>'"]/g, tag => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-    }[tag] || tag));
+function setThemeIcon(theme) {
+    const icon = document.getElementById("themeIcon");
+    if (!icon) return;
+    icon.className = theme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    // Global Navigation Active State
+function initTheme() {
+    const stored = localStorage.getItem("kcpo-theme");
+    const current = stored || document.documentElement.getAttribute("data-bs-theme") || "dark";
+    document.documentElement.setAttribute("data-bs-theme", current);
+    setThemeIcon(current);
+
+    const toggleBtn = document.getElementById("themeToggle");
+    if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+            const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+            document.documentElement.setAttribute("data-bs-theme", next);
+            localStorage.setItem("kcpo-theme", next);
+            setThemeIcon(next);
+        });
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 3. NAV ACTIVE STATE
+// ----------------------------------------------------------------------------
+function markActiveNavLink() {
     const currentPage = window.location.pathname.split("/").pop() || "index.html";
     document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
         if (link.getAttribute("href") === currentPage) {
-            link.classList.add("active", "text-warning");
+            link.classList.add("active");
             link.setAttribute("aria-current", "page");
         }
     });
+}
 
-    const gridContainer = document.getElementById("archiveGrid");
-    const searchInput = document.getElementById("repertoireSearch");
-    const logForm = document.getElementById("quickLogForm");
+// ----------------------------------------------------------------------------
+// 4. SHARED AUTH MODAL (single source of truth, injected on every page)
+// ----------------------------------------------------------------------------
+const AUTH_MODAL_HTML = `
+<div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-kcpo">
+            <div class="modal-header">
+                <h5 class="modal-title font-serif accent-gold">KCPO Member Portal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <ul class="nav nav-tabs mb-4" id="authTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="signin-tab" data-bs-toggle="tab" data-bs-target="#signin-pane" type="button" role="tab">Sign In</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup-pane" type="button" role="tab">New Member</button>
+                    </li>
+                    <li class="nav-item ms-auto" role="presentation">
+                        <button class="nav-link small" id="forgot-tab" data-bs-toggle="tab" data-bs-target="#forgot-pane" type="button" role="tab">Forgot Password?</button>
+                    </li>
+                </ul>
 
-    function renderRegistry(dataSet) {
-        if (!gridContainer) return;
-        gridContainer.innerHTML = ""; 
-
-        if (!dataSet || dataSet.length === 0) {
-            gridContainer.innerHTML = `<div class="col-12 text-center text-muted py-5">No repertoire found.</div>`;
-            return;
-        }
-
-        dataSet.forEach(item => {
-            const safeNotes = escapeHTML(item.notes);
-            const safeTitle = escapeHTML(item.title);
-            const safeComposer = escapeHTML(item.composer);
-            const safeEra = escapeHTML(item.era);
-            const safePdf = escapeHTML(item.pdfFile);
-
-            const cardHTML = `
-                <div class="col-md-6 archive-item">
-                    <div class="card kcpo-card p-3 h-100 d-flex flex-column justify-content-between">
-                        <div>
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h5 class="font-serif text-light mb-0 pe-2">${safeTitle}</h5>
-                                <span class="badge bg-secondary shrink-0">${safeEra}</span>
+                <div class="tab-content" id="authTabsContent">
+                    <div class="tab-pane fade show active" id="signin-pane" role="tabpanel">
+                        <form id="signInForm" novalidate>
+                            <div class="mb-3">
+                                <label class="form-label small">Email Address</label>
+                                <input type="email" class="form-control field" id="signInEmail" required placeholder="you@example.com">
                             </div>
-                            <span class="text-warning small fw-bold d-block mb-2">${safeComposer}</span>
-                            <p class="text-secondary small mb-3">${safeNotes}</p>
-                        </div>
-                        <div class="border-top border-secondary pt-3 mt-auto d-flex justify-content-between align-items-center">
-                            <span class="small text-muted font-monospace"><i class="bi bi-file-earmark-pdf"></i> ${safePdf}</span>
-                            <a href="assets/scores/${safePdf}" target="_blank" class="btn btn-sm btn-outline-light px-3">View PDF Score</a>
-                        </div>
+                            <div class="mb-4">
+                                <label class="form-label small">Password</label>
+                                <input type="password" class="form-control field" id="signInPassword" required placeholder="••••••••">
+                            </div>
+                            <button type="submit" class="btn btn-gold w-100 py-2">Sign In to Portal</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-pane fade" id="signup-pane" role="tabpanel">
+                        <form id="signUpForm" novalidate>
+                            <div class="mb-3">
+                                <label class="form-label small">Full Name</label>
+                                <input type="text" class="form-control field" id="signUpName" required placeholder="e.g., Leon Jabali">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small">Email Address</label>
+                                <input type="email" class="form-control field" id="signUpEmail" required placeholder="pianist@example.com">
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label small">Create Password</label>
+                                <input type="password" class="form-control field" id="signUpPassword" required placeholder="Min. 6 characters">
+                            </div>
+                            <button type="submit" class="btn btn-outline-gold w-100 py-2">Register for KCPO</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-pane fade" id="forgot-pane" role="tabpanel">
+                        <form id="forgotForm" novalidate>
+                            <p class="text-muted-c small mb-3">Enter your registered email address and we will send you a secure password reset link.</p>
+                            <div class="mb-4">
+                                <label class="form-label small">Email Address</label>
+                                <input type="email" class="form-control field" id="forgotEmail" required placeholder="you@example.com">
+                            </div>
+                            <button type="submit" class="btn btn-outline-line w-100 py-2">Send Reset Link</button>
+                        </form>
                     </div>
                 </div>
-            `;
-            gridContainer.insertAdjacentHTML("beforeend", cardHTML);
-        });
-    }
 
-    // Fetch from Firestore
-    async function loadRepertoire() {
-        if (!gridContainer) return;
-        gridContainer.innerHTML = `<div class="col-12 text-center text-muted py-5">Loading cloud registry...</div>`;
-        
-        try {
-            const q = query(collection(db, "performances"), orderBy("createdAt", "desc"));
-            const querySnapshot = await getDocs(q);
-            const data = [];
-            
-            querySnapshot.forEach((doc) => {
-                data.push({ id: doc.id, ...doc.data() });
-            });
-            
-            renderRegistry(data);
+                <div id="authAlert" class="alert mt-3 mb-0 d-none small py-2" role="alert"></div>
+            </div>
+        </div>
+    </div>
+</div>`;
 
-            if (searchInput) {
-                searchInput.addEventListener("input", (e) => {
-                    const queryText = e.target.value.toLowerCase().trim();
-                    const filteredData = data.filter(item => 
-                        item.title.toLowerCase().includes(queryText) || 
-                        item.composer.toLowerCase().includes(queryText) ||
-                        item.era.toLowerCase().includes(queryText)
-                    );
-                    renderRegistry(filteredData);
-                });
-            }
-        } catch (error) {
-            console.error("Failed to load repertoire:", error);
-            gridContainer.innerHTML = `<div class="col-12 text-center text-danger py-5">Error loading database.</div>`;
-        }
-    }
-
-    // Insert into Firestore
-    if (logForm) {
-        logForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            
-            if (!logForm.checkValidity()) {
-                e.stopPropagation();
-                logForm.classList.add("was-validated");
-                return;
-            }
-
-            try {
-                await addDoc(collection(db, "performances"), {
-                    title: document.getElementById("scoreTitle").value.trim(),
-                    composer: document.getElementById("scoreComposer").value.trim(),
-                    notes: document.getElementById("scoreNotes").value.trim(),
-                    era: document.getElementById("scoreEra").value,
-                    pdfFile: document.getElementById("scoreFile").value.trim(),
-                    createdAt: serverTimestamp()
-                });
-                
-                loadRepertoire(); 
-                const modalInstance = bootstrap.Modal.getInstance(document.getElementById("addScoreModal"));
-                if (modalInstance) modalInstance.hide();
-                logForm.reset();
-                logForm.classList.remove("was-validated");
-            } catch (error) {
-                alert("Database Error: You might not have permission to add scores. (" + error.message + ")");
-            }
-        });
-    }
-
-    loadRepertoire();
-});
-
+function injectAuthModal() {
+    if (document.getElementById("authModal")) return;
+    document.body.insertAdjacentHTML("beforeend", AUTH_MODAL_HTML);
+}
 
 // ----------------------------------------------------------------------------
-// 2. MEMBERSHIP MODULE: Dynamic Faculty Renderer (tutors.html)
+// 5. FIREBASE AUTHENTICATION
 // ----------------------------------------------------------------------------
-// (Keeping this local for now as per previous logic)
-document.addEventListener("DOMContentLoaded", () => {
-    const memberGrid = document.getElementById("memberGridContainer");
+const ADMIN_EMAILS = [
+    "matthew.keah@strathmore.edu"
+];
 
-    const memberRegistry = [
-        { name: "John Musila", role: "Founding Authority • Legal Convener", location: "United States (Remote)", bio: "Initiated the original network. Spearheading formal legal registration and strategic global positioning for KCPO.", statusBadge: "Remote Founder", photo: "musila.png.jpeg" },
-        { name: "Leon Jabali", role: "Logistical Engine • Production Lead", location: "Nairobi, Kenya", bio: "Foundational anchor attendee. Managed end-to-end organizational production and staging for the inaugural public recital.", statusBadge: "Active Core", photo: "jabali.png.jpeg" },
-        { name: "Matthew Keah", role: "Masterclass Coordinator • Technical Anchor", location: "Nairobi, Kenya", bio: "Owns monthly session curation, venue verification, and maintains rigorous performance standards during live critiques.", statusBadge: "Active Core", photo: "matthew.png.jpeg" },
-        { name: "Jesse Kinyanjui", role: "Artistic Peer • Collaborative Presenter", location: "Nairobi, Kenya", bio: "Active revival contributor. Fosters community accountability and repertoire exploration during monthly anchor sessions.", statusBadge: "Consistent Core", photo: "" },
-        { name: "Victor Ngatia", role: "Founding Peer • Critique Facilitator", location: "Nairobi, Kenya", bio: "Provides vital operational continuity and delivers highly technical peer feedback on wrist weight and phrasing.", statusBadge: "Consistent Core", photo: "" },
-        { name: "Keoni Ngugi", role: "Repertoire Anchor • Performance Track", location: "Nairobi, Kenya", bio: "Committed monthly participant dedicated to mastering complex classical literature through disciplined peer review.", statusBadge: "Consistent Core", photo: "keoni.png.jpeg" }
-    ];
-
-    if (memberGrid) {
-        memberGrid.innerHTML = ""; 
-        memberRegistry.forEach(member => {
-            const avatarHTML = member.photo 
-                ? `<img src="assets/members/${member.photo}" alt="${member.name} Profile" class="avatar-pfp shadow">`
-                : `<i class="bi bi-person-circle default-avatar-icon"></i>`;
-
-            const cardHTML = `
-                <div class="col-md-6 col-lg-4">
-                    <div class="profile-card h-100 d-flex flex-column text-center p-4">
-                        <div class="avatar-container">${avatarHTML}</div>
-                        <div class="card-body p-0 d-flex flex-column flex-grow-1">
-                            <span class="member-role-tag mb-1">${member.role}</span>
-                            <h3 class="font-serif text-light fw-bold mb-1">${member.name}</h3>
-                            <span class="text-muted small mb-3"><i class="bi bi-geo-alt"></i> ${member.location}</span>
-                            <p class="text-secondary small px-2 my-auto">${member.bio}</p>
-                        </div>
-                        <div class="border-top border-secondary pt-3 mt-4">
-                            <span class="badge bg-dark border border-secondary text-light px-3 py-2 fw-normal">${member.statusBadge}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            memberGrid.insertAdjacentHTML("beforeend", cardHTML);
-        });
-    }
-});
-
-
-// ----------------------------------------------------------------------------
-// 3. FIREBASE AUTHENTICATION MODULE
-// ----------------------------------------------------------------------------
-document.addEventListener("DOMContentLoaded", () => {
-    const signInForm = document.getElementById("signInForm");
-    const signUpForm = document.getElementById("signUpForm");
-    const forgotForm = document.getElementById("forgotForm");
+function showAuthAlert(message, type = "danger") {
     const authAlert = document.getElementById("authAlert");
+    if (!authAlert) return;
+    authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2 status-alert`;
+    authAlert.textContent = message;
+}
+
+function initAuth() {
     const navAuthBtn = document.getElementById("navAuthBtn");
 
-    function showAuthAlert(message, type = "danger") {
-        if (!authAlert) return;
-        authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`;
-        authAlert.textContent = message;
-    }
-
-    // Listen for session changes globally
     onAuthStateChanged(auth, (user) => {
         if (!navAuthBtn) return;
         if (user) {
-            const userEmail = user.email;
-            
-            // Updated Admin Array
-            const adminEmails = [
-                "matthew.keah@strathmore.edu",
-                "john.musila@example.com",
-                "leon.jabali@example.com"
-            ];
-            const isAdmin = adminEmails.includes(userEmail.toLowerCase());
-            
-            navAuthBtn.innerHTML = isAdmin 
-                ? `<i class="bi bi-shield-lock-fill text-danger me-1"></i> Admin Portal`
-                : `<i class="bi bi-person-check-fill text-success me-1"></i> My Account`;
-            navAuthBtn.classList.replace("btn-outline-warning", "btn-warning");
-            navAuthBtn.classList.add("text-dark", "fw-bold");
-            
+            const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+            navAuthBtn.innerHTML = isAdmin
+                ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin Portal`
+                : `<i class="bi bi-person-check-fill me-1"></i> My Account`;
+            navAuthBtn.classList.remove("btn-outline-gold");
+            navAuthBtn.classList.add("btn-gold");
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            sessionStorage.setItem("kcpo_user", userEmail);
+            sessionStorage.setItem("kcpo_user", user.email);
         } else {
+            navAuthBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Member Sign In`;
+            navAuthBtn.classList.remove("btn-gold");
+            navAuthBtn.classList.add("btn-outline-gold");
             sessionStorage.removeItem("kcpo_role");
             sessionStorage.removeItem("kcpo_user");
         }
     });
 
-    // 1. SIGN IN ACTION
+    const signInForm = document.getElementById("signInForm");
     if (signInForm) {
         signInForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             showAuthAlert("Authenticating...", "info");
             const email = document.getElementById("signInEmail").value.trim();
             const password = document.getElementById("signInPassword").value;
-
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 showAuthAlert("Welcome back! Loading portal...", "success");
                 setTimeout(() => {
-                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
-                    if (modalInstance) modalInstance.hide();
-                    window.location.reload(); 
-                }, 1000);
+                    bootstrap.Modal.getInstance(document.getElementById("authModal"))?.hide();
+                    window.location.reload();
+                }, 900);
             } catch (error) {
-                showAuthAlert(error.message, "danger");
+                showAuthAlert(friendlyAuthError(error), "danger");
             }
         });
     }
 
-    // 2. SIGN UP ACTION (Standard Firebase Email/Password)
+    const signUpForm = document.getElementById("signUpForm");
     if (signUpForm) {
         signUpForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             showAuthAlert("Creating account...", "info");
             const email = document.getElementById("signUpEmail").value.trim();
             const password = document.getElementById("signUpPassword").value;
-
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
-                showAuthAlert("Account created successfully!", "success");
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
+                showAuthAlert("Account created! Welcome to KCPO.", "success");
+                setTimeout(() => window.location.reload(), 900);
             } catch (error) {
-                showAuthAlert(error.message, "danger");
+                showAuthAlert(friendlyAuthError(error), "danger");
             }
         });
     }
 
-    // 3. FORGOT PASSWORD ACTION
+    const forgotForm = document.getElementById("forgotForm");
     if (forgotForm) {
         forgotForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             showAuthAlert("Sending reset link...", "info");
             const email = document.getElementById("forgotEmail").value.trim();
-
             try {
                 await sendPasswordResetEmail(auth, email);
-                showAuthAlert("Password reset link sent to your email!", "success");
+                showAuthAlert("Password reset link sent — check your inbox.", "success");
                 forgotForm.reset();
             } catch (error) {
-                showAuthAlert(error.message, "danger");
+                showAuthAlert(friendlyAuthError(error), "danger");
             }
         });
     }
+}
+
+// Translate raw Firebase error codes into plain, human sentences.
+function friendlyAuthError(error) {
+    const map = {
+        "auth/invalid-email": "That email address doesn't look right.",
+        "auth/user-not-found": "No account found with that email.",
+        "auth/wrong-password": "Incorrect password. Try again or reset it.",
+        "auth/invalid-credential": "Email or password is incorrect.",
+        "auth/email-already-in-use": "An account already exists for that email.",
+        "auth/weak-password": "Password should be at least 6 characters.",
+        "auth/unauthorized-domain": "This domain isn't authorized in Firebase yet. Add it under Authentication → Settings → Authorized domains."
+    };
+    return map[error.code] || error.message;
+}
+
+// ----------------------------------------------------------------------------
+// 6. REGISTRATION FORM -> FIRESTORE (register.html)
+// ----------------------------------------------------------------------------
+function initRegistrationForm() {
+    const form = document.getElementById("slotRegistrationForm");
+    if (!form) return;
+
+    const statusBox = document.getElementById("registrationStatus");
+    const submitBtn = form.querySelector("button[type=submit]");
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!form.checkValidity()) {
+            form.classList.add("was-validated");
+            return;
+        }
+
+        const payload = {
+            firstName: document.getElementById("firstName").value.trim(),
+            lastName: document.getElementById("lastName").value.trim(),
+            email: document.getElementById("email").value.trim(),
+            repertoire: document.getElementById("repertoire").value.trim(),
+            sessionMonth: document.getElementById("sessionMonth").value,
+            attendingHybrid: document.getElementById("hybridCheck").checked,
+            submittedByUid: auth.currentUser ? auth.currentUser.uid : null,
+            createdAt: serverTimestamp()
+        };
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submitting...";
+
+        try {
+            await addDoc(collection(db, "registrations"), payload);
+            if (statusBox) {
+                statusBox.className = "alert alert-success status-alert mb-4";
+                statusBox.textContent = `Thanks, ${payload.firstName} — your repertoire is booked in for review by the Masterclass Coordinator.`;
+                statusBox.classList.remove("d-none");
+            }
+            form.reset();
+            form.classList.remove("was-validated");
+        } catch (error) {
+            if (statusBox) {
+                statusBox.className = "alert alert-danger status-alert mb-4";
+                statusBox.textContent = "Something went wrong saving your registration: " + error.message;
+                statusBox.classList.remove("d-none");
+            }
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Submit Registration";
+        }
+    });
+}
+
+// ----------------------------------------------------------------------------
+// BOOT
+// ----------------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+    initTheme();
+    markActiveNavLink();
+    injectAuthModal();
+    initAuth();
+    initRegistrationForm();
 });

@@ -1,34 +1,44 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
-    
+
 <head>
-    
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('kcpo-theme');
+                if (t) document.documentElement.setAttribute('data-bs-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About Framework | Kenya Classical Pianists' Organization</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-black border-bottom border-secondary">
+    <nav class="navbar navbar-expand-lg navbar-dark brand-bar border-bottom">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.html">PIANISTS' CIRCLE <span class="fs-6 fw-normal text-muted">| KCPO</span></a>
+            <a class="navbar-brand fw-bold" href="index.html">PIANISTS' CIRCLE <span class="fs-6 fw-normal text-muted-c">| KCPO</span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
                     <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                     <li class="nav-item"><a class="nav-link" href="about.html">About Framework</a></li>
                     <li class="nav-item"><a class="nav-link" href="masterclasses.html">Sessions</a></li>
-                    <li class="nav-item"><a class="nav-link" href="tutors.html">Membership Layer</a></li>
-                    <li class="nav-item"><a class="nav-link" href="archive.html">Resource Log</a></li>
                     <li class="nav-item"><a class="nav-link" href="register.html">Action Plan</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.html">Communications</a></li>
-                    
-                    <li class="nav-item ms-lg-3">
-                        <button class="btn btn-outline-warning btn-sm px-3 my-1" data-bs-toggle="modal" data-bs-target="#authModal" id="navAuthBtn">
+                    <li class="nav-item ms-lg-2">
+                        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark mode" title="Toggle theme">
+                            <i class="bi bi-sun-fill" id="themeIcon"></i>
+                        </button>
+                    </li>
+                    <li class="nav-item ms-lg-3 my-2 my-lg-0">
+                        <button class="btn btn-outline-gold btn-sm px-3" data-bs-toggle="modal" data-bs-target="#authModal" id="navAuthBtn">
                             <i class="bi bi-person-circle me-1"></i> Member Sign In
                         </button>
                     </li>
@@ -39,43 +49,43 @@
 
     <main class="container py-5">
         <section class="text-center mb-5">
-            <span class="text-uppercase tracking-widest text-muted small">Living Document 2026</span>
-            <h1 class="display-4 font-serif accent-gold mt-2">Organizational Framework</h1>
-            <p class="lead text-secondary col-lg-8 mx-auto">Founded by pianists, for pianists. Formalizing a structure that honors our origins in Nairobi while equipping us for a sustainable future.</p>
+            <span class="eyebrow text-uppercase">Living document · 2026</span>
+            <h1 class="display-4 accent-gold mt-2">Organizational framework</h1>
+            <p class="lead lede mx-auto">Founded by pianists, for pianists. Formalizing a structure that honors our origins in Nairobi while equipping us for a sustainable future.</p>
         </section>
 
         <section class="mb-5">
-            <h3 class="font-serif accent-gold mb-4 border-bottom border-secondary pb-2">Our Core Values</h3>
+            <h3 class="accent-gold mb-4 pb-2" style="border-bottom: 1px solid var(--line);">Our core values</h3>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-3">
                     <div class="card kcpo-card h-100 p-3">
                         <div class="card-body">
-                            <h5 class="card-title font-serif text-light">Consistency</h5>
-                            <p class="card-text text-secondary small">We show up, even when it is inconvenient. Predictability of schedule builds trust.</p>
+                            <h5 class="card-title mb-2">Consistency</h5>
+                            <p class="card-text text-muted-c small">We show up, even when it's inconvenient. Predictability of schedule builds trust.</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-3">
                     <div class="card kcpo-card h-100 p-3">
                         <div class="card-body">
-                            <h5 class="card-title font-serif text-light">Honest Critique</h5>
-                            <p class="card-text text-secondary small">We give mutual peer feedback that is truthful, technically specific, and kind.</p>
+                            <h5 class="card-title mb-2">Honest critique</h5>
+                            <p class="card-text text-muted-c small">We give mutual peer feedback that is truthful, technically specific, and kind.</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-3">
                     <div class="card kcpo-card h-100 p-3">
                         <div class="card-body">
-                            <h5 class="card-title font-serif text-light">Shared Ownership</h5>
-                            <p class="card-text text-secondary small">Every active member is a stakeholder and driver, not a passive passenger.</p>
+                            <h5 class="card-title mb-2">Shared ownership</h5>
+                            <p class="card-text text-muted-c small">Every active member is a stakeholder and driver, not a passive passenger.</p>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-3">
                     <div class="card kcpo-card h-100 p-3">
                         <div class="card-body">
-                            <h5 class="card-title font-serif text-light">Artistic Ambition</h5>
-                            <p class="card-text text-secondary small">We aim higher together toward public recitals than we would practice alone.</p>
+                            <h5 class="card-title mb-2">Artistic ambition</h5>
+                            <p class="card-text text-muted-c small">We aim higher together toward public recitals than we would practicing alone.</p>
                         </div>
                     </div>
                 </div>
@@ -83,37 +93,37 @@
         </section>
 
         <section class="mb-5">
-            <h3 class="font-serif accent-gold mb-4 border-bottom border-secondary pb-2">Distributed Leadership Structure</h3>
-            <p class="text-secondary small mb-3">To prevent burnout, roles are rotational and held for a maximum of one year without a renewal vote.</p>
+            <h3 class="accent-gold mb-2 pb-2" style="border-bottom: 1px solid var(--line);">Distributed leadership structure</h3>
+            <p class="text-muted-c small mb-3">To prevent burnout, roles are rotational and held for a maximum of one year without a renewal vote.</p>
             <div class="table-responsive">
-                <table class="table table-dark table-hover border">
-                    <thead class="border-secondary text-warning">
+                <table class="table table-kcpo table-hover">
+                    <thead>
                         <tr>
                             <th scope="col">Role</th>
-                            <th scope="col">Core Responsibilities</th>
-                            <th scope="col">Accountability Metric</th>
+                            <th scope="col">Core responsibilities</th>
+                            <th scope="col">Accountability metric</th>
                         </tr>
                     </thead>
-                    <tbody class="text-secondary small">
+                    <tbody class="small">
                         <tr>
-                            <td class="text-light fw-bold">Chairperson / Convener</td>
-                            <td>Facilitates live sessions, holds group vision, acts as engine rather than boss.</td>
-                            <td>Elected annually by active members. Remote participation permitted.</td>
+                            <td class="fw-bold">Chairperson / Convener</td>
+                            <td class="text-muted-c">Facilitates live sessions, holds group vision, acts as engine rather than boss.</td>
+                            <td class="text-muted-c">Elected annually by active members. Remote participation permitted.</td>
                         </tr>
                         <tr>
-                            <td class="text-light fw-bold">Masterclass Coordinator</td>
-                            <td>Schedules sessions, confirms presenters, manages venue logistics.</td>
-                            <td>Sends monthly schedule at least 3 weeks in advance.</td>
+                            <td class="fw-bold">Masterclass Coordinator</td>
+                            <td class="text-muted-c">Schedules sessions, confirms presenters, manages venue logistics.</td>
+                            <td class="text-muted-c">Sends monthly schedule at least 3 weeks in advance.</td>
                         </tr>
                         <tr>
-                            <td class="text-light fw-bold">People's Coordinator</td>
-                            <td>Member welfare, onboarding, tracks attendance trends.</td>
-                            <td>Flags disengagement early and conducts personal 1-on-1 outreach.</td>
+                            <td class="fw-bold">People's Coordinator</td>
+                            <td class="text-muted-c">Member welfare, onboarding, tracks attendance trends.</td>
+                            <td class="text-muted-c">Flags disengagement early and conducts personal 1-on-1 outreach.</td>
                         </tr>
                         <tr>
-                            <td class="text-light fw-bold">Secretary / Scribe</td>
-                            <td>Documents session repertoire, records formal decisions.</td>
-                            <td>Circulates written summary notes within 48 hours of meeting.</td>
+                            <td class="fw-bold">Secretary / Scribe</td>
+                            <td class="text-muted-c">Documents session repertoire, records formal decisions.</td>
+                            <td class="text-muted-c">Circulates written summary notes within 48 hours of meeting.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -121,14 +131,13 @@
         </section>
     </main>
 
-    <footer class="bg-black text-center py-4 small text-muted border-top border-secondary">
+    <footer class="site-footer text-center py-4 small border-top">
         <div class="container">
             <p class="mb-0">&copy; 2026 Pianists' Circle | Kenya Classical Pianists' Organization (KCPO).</p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
