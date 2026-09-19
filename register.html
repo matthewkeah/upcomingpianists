@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
-
 <head>
     <script>
         (function () {
@@ -33,7 +32,7 @@
                     <li class="nav-item"><a class="nav-link" href="register.html">Action Plan</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.html">Communications</a></li>
                     <li class="nav-item ms-lg-2">
-                        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark mode" title="Toggle theme">
+                        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
                             <i class="bi bi-sun-fill" id="themeIcon"></i>
                         </button>
                     </li>
@@ -61,7 +60,6 @@
                     <div id="registrationStatus" class="alert d-none" role="alert"></div>
 
                     <form id="slotRegistrationForm" class="needs-validation" novalidate>
-
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
                                 <label for="firstName" class="form-label">First name *</label>
@@ -91,11 +89,15 @@
                             <label for="sessionMonth" class="form-label">Target masterclass month *</label>
                             <select class="form-select field" id="sessionMonth" required>
                                 <option value="" selected disabled>Select a month...</option>
-                                <option value="October">October 2026</option>
-                                <option value="November">November 2026</option>
-                                <option value="December">December 2026</option>
+                                <!-- JS populates this dynamically -->
                             </select>
                             <div class="invalid-feedback">Please select a target month.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="actionPdfFile" class="form-label">Upload PDF Score *</label>
+                            <input class="form-control field" type="file" id="actionPdfFile" accept="application/pdf" required>
+                            <div class="invalid-feedback">Please attach your sheet music.</div>
                         </div>
 
                         <div class="mb-4 form-check">
@@ -105,7 +107,6 @@
 
                         <button class="btn btn-gold btn-lg w-100" type="submit">Submit Registration</button>
                     </form>
-
                 </div>
             </div>
         </section>

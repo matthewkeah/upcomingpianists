@@ -118,11 +118,17 @@ hr.divider, .divider-line {
 .navbar .nav-link {
     color: #d9cdb8;
     font-size: 0.94rem;
+    transition: all 0.3s ease;
 }
 
-.navbar .nav-link:hover,
+.navbar .nav-link:hover {
+    color: var(--gold-strong);
+}
+
 .navbar .nav-link.active {
     color: var(--gold-strong);
+    text-shadow: 0 0 12px rgba(226, 187, 99, 0.7);
+    border-bottom: 2px solid var(--gold-strong);
 }
 
 .site-footer {

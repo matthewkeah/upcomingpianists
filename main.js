@@ -5,9 +5,6 @@
  * ============================================================================
  */
 
-// ----------------------------------------------------------------------------
-// 1. FIREBASE INIT
-// ----------------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
 import {
     getAuth,
@@ -26,7 +23,10 @@ import {
     doc,
     deleteDoc,
     updateDoc,
-    serverTimestamp
+    serverTimestamp,
+    query,
+    where,
+    orderBy
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -43,46 +43,76 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ----------------------------------------------------------------------------
-// 2. THEME TOGGLE 
+// GLOBAL CONSTANTS
 // ----------------------------------------------------------------------------
-function setThemeIcon(theme) {
+const ADMIN_EMAILS = ["matthew.keah@strathmore.edu"];
+const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
+const CLOUDINARY_PRESET = "qe5c4qkd"; 
+
+// ----------------------------------------------------------------------------
+// THEME & NAV STATE
+// ----------------------------------------------------------------------------
+function initTheme() {
+    const stored = localStorage.getItem("kcpo-theme") || "dark";
+    document.documentElement.setAttribute("data-bs-theme", stored);
     const icon = document.getElementById("themeIcon");
-    if (!icon) return;
-    icon.className = theme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+    if (icon) icon.className = stored === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+
+    document.getElementById("themeToggle")?.addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-bs-theme", next);
+        localStorage.setItem("kcpo-theme", next);
+        if (icon) icon.className = next === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+    });
 }
 
-function initTheme() {
-    const stored = localStorage.getItem("kcpo-theme");
-    const current = stored || document.documentElement.getAttribute("data-bs-theme") || "dark";
-    document.documentElement.setAttribute("data-bs-theme", current);
-    setThemeIcon(current);
+function markActiveNavLink() {
+    const currentPage = window.location.pathname.split("/").pop() || "index.html";
+    document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
+        if (link.getAttribute("href") === currentPage) link.classList.add("active");
+    });
+}
 
-    const toggleBtn = document.getElementById("themeToggle");
-    if (toggleBtn) {
-        toggleBtn.addEventListener("click", () => {
-            const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
-            document.documentElement.setAttribute("data-bs-theme", next);
-            localStorage.setItem("kcpo-theme", next);
-            setThemeIcon(next);
+// ----------------------------------------------------------------------------
+// DYNAMIC MONTH GENERATOR
+// ----------------------------------------------------------------------------
+function populateDynamicMonths() {
+    const registerDropdown = document.getElementById("sessionMonth");
+    const masterclassDropdown = document.getElementById("repertoireMonthSelect");
+    
+    if (!registerDropdown && !masterclassDropdown) return;
+
+    const upcomingMonths = [];
+    const currentDate = new Date();
+    
+    for (let i = 0; i < 12; i++) {
+        const futureDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
+        const monthString = futureDate.toLocaleString('default', { month: 'long' }) + " " + futureDate.getFullYear();
+        upcomingMonths.push(monthString);
+    }
+
+    if (registerDropdown) {
+        upcomingMonths.forEach(monthStr => {
+            const opt = document.createElement("option");
+            opt.value = monthStr;
+            opt.textContent = monthStr;
+            registerDropdown.appendChild(opt);
+        });
+    }
+
+    if (masterclassDropdown) {
+        upcomingMonths.forEach((monthStr, index) => {
+            const opt = document.createElement("option");
+            opt.value = monthStr;
+            opt.textContent = monthStr;
+            if (index === 0) opt.selected = true; 
+            masterclassDropdown.appendChild(opt);
         });
     }
 }
 
 // ----------------------------------------------------------------------------
-// 3. NAV ACTIVE STATE
-// ----------------------------------------------------------------------------
-function markActiveNavLink() {
-    const currentPage = window.location.pathname.split("/").pop() || "index.html";
-    document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
-        if (link.getAttribute("href") === currentPage) {
-            link.classList.add("active");
-            link.setAttribute("aria-current", "page");
-        }
-    });
-}
-
-// ----------------------------------------------------------------------------
-// 4. SHARED AUTH MODAL
+// AUTHENTICATION
 // ----------------------------------------------------------------------------
 const AUTH_MODAL_HTML = `
 <div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
@@ -90,329 +120,356 @@ const AUTH_MODAL_HTML = `
         <div class="modal-content modal-kcpo">
             <div class="modal-header">
                 <h5 class="modal-title font-serif accent-gold">KCPO Member Portal</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
                 <ul class="nav nav-tabs mb-4" id="authTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="signin-tab" data-bs-toggle="tab" data-bs-target="#signin-pane" type="button" role="tab">Sign In</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup-pane" type="button" role="tab">New Member</button>
-                    </li>
-                    <li class="nav-item ms-auto" role="presentation">
-                        <button class="nav-link small" id="forgot-tab" data-bs-toggle="tab" data-bs-target="#forgot-pane" type="button" role="tab">Forgot Password?</button>
-                    </li>
+                    <li class="nav-item"><button class="nav-link active" id="signin-tab" data-bs-toggle="tab" data-bs-target="#signin-pane">Sign In</button></li>
+                    <li class="nav-item"><button class="nav-link" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup-pane">New Member</button></li>
                 </ul>
-
                 <div class="tab-content" id="authTabsContent">
-                    <div class="tab-pane fade show active" id="signin-pane" role="tabpanel">
-                        <form id="signInForm" novalidate>
-                            <div class="mb-3">
-                                <label class="form-label small">Email Address</label>
-                                <input type="email" class="form-control field" id="signInEmail" required placeholder="you@example.com">
-                            </div>
-                            <div class="mb-4">
-                                <label class="form-label small">Password</label>
-                                <input type="password" class="form-control field" id="signInPassword" required placeholder="••••••••">
-                            </div>
-                            <button type="submit" class="btn btn-gold w-100 py-2">Sign In to Portal</button>
+                    <div class="tab-pane fade show active" id="signin-pane">
+                        <form id="signInForm">
+                            <div class="mb-3"><input type="email" class="form-control field" id="signInEmail" required placeholder="Email"></div>
+                            <div class="mb-4"><input type="password" class="form-control field" id="signInPassword" required placeholder="Password"></div>
+                            <button type="submit" class="btn btn-gold w-100 py-2">Sign In</button>
                         </form>
                     </div>
-
-                    <div class="tab-pane fade" id="signup-pane" role="tabpanel">
-                        <form id="signUpForm" novalidate>
-                            <div class="mb-3">
-                                <label class="form-label small">Full Name</label>
-                                <input type="text" class="form-control field" id="signUpName" required placeholder="e.g., Leon Jabali">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label small">Email Address</label>
-                                <input type="email" class="form-control field" id="signUpEmail" required placeholder="pianist@example.com">
-                            </div>
-                            <div class="mb-4">
-                                <label class="form-label small">Create Password</label>
-                                <input type="password" class="form-control field" id="signUpPassword" required placeholder="Min. 6 characters">
-                            </div>
-                            <button type="submit" class="btn btn-outline-gold w-100 py-2">Register for KCPO</button>
-                        </form>
-                    </div>
-
-                    <div class="tab-pane fade" id="forgot-pane" role="tabpanel">
-                        <form id="forgotForm" novalidate>
-                            <p class="text-muted-c small mb-3">Enter your registered email address and we will send you a secure password reset link.</p>
-                            <div class="mb-4">
-                                <label class="form-label small">Email Address</label>
-                                <input type="email" class="form-control field" id="forgotEmail" required placeholder="you@example.com">
-                            </div>
-                            <button type="submit" class="btn btn-outline-line w-100 py-2">Send Reset Link</button>
+                    <div class="tab-pane fade" id="signup-pane">
+                        <form id="signUpForm">
+                            <div class="mb-3"><input type="text" class="form-control field" id="signUpName" required placeholder="Full Name"></div>
+                            <div class="mb-3"><input type="email" class="form-control field" id="signUpEmail" required placeholder="Email"></div>
+                            <div class="mb-4"><input type="password" class="form-control field" id="signUpPassword" required placeholder="Min 6 chars"></div>
+                            <button type="submit" class="btn btn-outline-gold w-100 py-2">Register</button>
                         </form>
                     </div>
                 </div>
-
-                <div id="authAlert" class="alert mt-3 mb-0 d-none small py-2" role="alert"></div>
+                <div id="authAlert" class="alert mt-3 mb-0 d-none small py-2"></div>
             </div>
         </div>
     </div>
 </div>`;
 
 function injectAuthModal() {
-    if (document.getElementById("authModal")) return;
-    document.body.insertAdjacentHTML("beforeend", AUTH_MODAL_HTML);
-}
-
-// ----------------------------------------------------------------------------
-// 5. FIREBASE AUTHENTICATION & ROUTING
-// ----------------------------------------------------------------------------
-const ADMIN_EMAILS = [
-    "matthew.keah@strathmore.edu"
-];
-
-function showAuthAlert(message, type = "danger") {
-    const authAlert = document.getElementById("authAlert");
-    if (!authAlert) return;
-    authAlert.className = `alert alert-${type} mt-3 mb-0 d-block small py-2 status-alert`;
-    authAlert.textContent = message;
+    if (!document.getElementById("authModal")) document.body.insertAdjacentHTML("beforeend", AUTH_MODAL_HTML);
 }
 
 window.logoutUser = async function() {
-    try {
-        await signOut(auth);
-        sessionStorage.removeItem("kcpo_role");
-        sessionStorage.removeItem("kcpo_user");
-        alert("You have been signed out.");
-        window.location.href = "index.html";
-    } catch (error) {
-        console.error("Error signing out:", error);
-    }
+    await signOut(auth);
+    sessionStorage.clear();
+    window.location.href = "index.html";
 };
 
+function showAuthAlert(msg, type = "danger") {
+    const box = document.getElementById("authAlert");
+    if (box) { box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; box.textContent = msg; }
+}
+
 function initAuth() {
-    const navAuthBtn = document.getElementById("navAuthBtn");
+    const navBtn = document.getElementById("navAuthBtn");
 
     onAuthStateChanged(auth, (user) => {
-        if (!navAuthBtn) return;
-
-        const existingLogout = document.getElementById("dynamicLogoutBtn");
-        if (existingLogout) existingLogout.remove();
+        if (!navBtn) return;
+        document.getElementById("dynamicLogoutBtn")?.remove();
 
         if (user) {
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-            
-            navAuthBtn.innerHTML = isAdmin
-                ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin Portal`
-                : `<i class="bi bi-person-check-fill me-1"></i> Member Inbox`;
-            navAuthBtn.classList.remove("btn-outline-gold");
-            navAuthBtn.classList.add("btn-gold");
-            
-            navAuthBtn.removeAttribute("data-bs-toggle");
-            navAuthBtn.removeAttribute("data-bs-target");
-            navAuthBtn.onclick = () => {
-                window.location.href = isAdmin ? "admin.html" : "member.html";
-            };
+            navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
+            navBtn.className = "btn btn-gold btn-sm px-3";
+            navBtn.removeAttribute("data-bs-toggle");
+            // Fixed the routing back to admin.html
+            navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
 
             const li = document.createElement("li");
             li.className = "nav-item ms-lg-2 my-2 my-lg-0";
             li.id = "dynamicLogoutBtn";
             li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
-            navAuthBtn.parentElement.parentElement.appendChild(li);
+            navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            sessionStorage.setItem("kcpo_user", user.email);
+            sessionStorage.setItem("kcpo_name", user.displayName || user.email);
         } else {
-            navAuthBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Member Sign In`;
-            navAuthBtn.classList.remove("btn-gold");
-            navAuthBtn.classList.add("btn-outline-gold");
-            
-            navAuthBtn.setAttribute("data-bs-toggle", "modal");
-            navAuthBtn.setAttribute("data-bs-target", "#authModal");
-            navAuthBtn.onclick = null;
+            navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
+            navBtn.className = "btn btn-outline-gold btn-sm px-3";
+            navBtn.setAttribute("data-bs-toggle", "modal");
+            navBtn.setAttribute("data-bs-target", "#authModal");
+            navBtn.onclick = null;
         }
     });
 
-    const signInForm = document.getElementById("signInForm");
-    if (signInForm) {
-        signInForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Authenticating...", "info");
-            const email = document.getElementById("signInEmail").value.trim();
-            const password = document.getElementById("signInPassword").value;
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-                showAuthAlert("Welcome back! Loading portal...", "success");
-                setTimeout(() => {
-                    bootstrap.Modal.getInstance(document.getElementById("authModal"))?.hide();
-                    window.location.reload();
-                }, 900);
-            } catch (error) {
-                showAuthAlert(friendlyAuthError(error), "danger");
-            }
-        });
-    }
+    document.getElementById("signInForm")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+            await signInWithEmailAndPassword(auth, document.getElementById("signInEmail").value, document.getElementById("signInPassword").value);
+            window.location.reload();
+        } catch (err) { showAuthAlert(err.message); }
+    });
 
-    const signUpForm = document.getElementById("signUpForm");
-    if (signUpForm) {
-        signUpForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Creating account...", "info");
-            const email = document.getElementById("signUpEmail").value.trim();
-            const password = document.getElementById("signUpPassword").value;
-            try {
-                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                const fullName = document.getElementById("signUpName").value.trim();
-                
-                await setDoc(doc(db, "users", userCredential.user.uid), {
-                    name: fullName,
-                    email: email,
-                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
-                    createdAt: serverTimestamp()
-                });
-
-                showAuthAlert("Account created! Welcome to KCPO.", "success");
-                setTimeout(() => window.location.reload(), 900);
-            } catch (error) {
-                showAuthAlert(friendlyAuthError(error), "danger");
-            }
-        });
-    }
-
-    const forgotForm = document.getElementById("forgotForm");
-    if (forgotForm) {
-        forgotForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            showAuthAlert("Sending reset link...", "info");
-            const email = document.getElementById("forgotEmail").value.trim();
-            try {
-                await sendPasswordResetEmail(auth, email);
-                showAuthAlert("Password reset link sent — check your inbox.", "success");
-                forgotForm.reset();
-            } catch (error) {
-                showAuthAlert(friendlyAuthError(error), "danger");
-            }
-        });
-    }
-}
-
-function friendlyAuthError(error) {
-    const map = {
-        "auth/invalid-email": "That email address doesn't look right.",
-        "auth/user-not-found": "No account found with that email.",
-        "auth/wrong-password": "Incorrect password. Try again or reset it.",
-        "auth/invalid-credential": "Email or password is incorrect.",
-        "auth/email-already-in-use": "An account already exists for that email.",
-        "auth/weak-password": "Password should be at least 6 characters."
-    };
-    return map[error.code] || error.message;
+    document.getElementById("signUpForm")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+            const email = document.getElementById("signUpEmail").value;
+            const cred = await createUserWithEmailAndPassword(auth, email, document.getElementById("signUpPassword").value);
+            await setDoc(doc(db, "users", cred.user.uid), {
+                name: document.getElementById("signUpName").value,
+                email: email,
+                role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
+                createdAt: serverTimestamp()
+            });
+            window.location.reload();
+        } catch (err) { showAuthAlert(err.message); }
+    });
 }
 
 // ----------------------------------------------------------------------------
-// 6. REGISTRATION FORM -> FIRESTORE
+// ACTION PLAN (Registration Gatekeeper & Upload)
 // ----------------------------------------------------------------------------
 function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
     if (!form) return;
 
-    const statusBox = document.getElementById("registrationStatus");
-    const submitBtn = form.querySelector("button[type=submit]");
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
 
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (!form.checkValidity()) {
-            form.classList.add("was-validated");
+        if (!auth.currentUser) {
+            const authModal = new bootstrap.Modal(document.getElementById('authModal'));
+            document.getElementById('signup-tab').click();
+            authModal.show();
+            showAuthAlert("Please create an account to secure your performance slot and upload scores.", "info");
             return;
         }
 
-        const payload = {
-            firstName: document.getElementById("firstName").value.trim(),
-            lastName: document.getElementById("lastName").value.trim(),
-            email: document.getElementById("email").value.trim(),
-            repertoire: document.getElementById("repertoire").value.trim(),
-            sessionMonth: document.getElementById("sessionMonth").value,
-            attendingHybrid: document.getElementById("hybridCheck").checked,
-            submittedByUid: auth.currentUser ? auth.currentUser.uid : null,
-            createdAt: serverTimestamp()
-        };
+        if (!form.checkValidity()) { form.classList.add("was-validated"); return; }
 
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Submitting...";
+        const btn = form.querySelector("button[type=submit]");
+        const status = document.getElementById("registrationStatus");
+        const file = document.getElementById("actionPdfFile").files[0];
+        const month = document.getElementById("sessionMonth").value;
+        const title = document.getElementById("repertoire").value.trim();
+
+        btn.disabled = true; btn.textContent = "Uploading Score...";
+        status.classList.add("d-none");
 
         try {
-            await addDoc(collection(db, "registrations"), payload);
-            if (statusBox) {
-                statusBox.className = "alert alert-success status-alert mb-4";
-                statusBox.textContent = `Thanks, ${payload.firstName} — your repertoire is booked in for review.`;
-                statusBox.classList.remove("d-none");
-            }
-            form.reset();
-            form.classList.remove("was-validated");
-        } catch (error) {
-            if (statusBox) {
-                statusBox.className = "alert alert-danger status-alert mb-4";
-                statusBox.textContent = "Something went wrong saving your registration: " + error.message;
-                statusBox.classList.remove("d-none");
-            }
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("upload_preset", CLOUDINARY_PRESET);
+            
+            const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
+            const cloudinaryData = await cloudinaryRes.json();
+            if (!cloudinaryRes.ok) throw new Error("Cloudinary upload failed.");
+
+            await addDoc(collection(db, "scores"), {
+                pieceTitle: title,
+                pdfUrl: cloudinaryData.secure_url,
+                fileName: file.name,
+                sessionMonth: month,
+                uploadedByEmail: auth.currentUser.email,
+                uploadedByUid: auth.currentUser.uid,
+                createdAt: serverTimestamp()
+            });
+
+            status.className = "alert alert-success mt-3 d-block";
+            status.textContent = "Slot secured and score uploaded successfully!";
+            form.reset(); form.classList.remove("was-validated");
+        } catch (err) {
+            status.className = "alert alert-danger mt-3 d-block";
+            status.textContent = err.message;
         } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Submit Registration";
+            btn.disabled = false; btn.textContent = "Submit Registration";
         }
     });
 }
 
 // ----------------------------------------------------------------------------
-// 7. DYNAMIC REPERTOIRE BANNER
+// MASTERCLASSES: TIME-TRAVEL REPERTOIRE & CHAT
 // ----------------------------------------------------------------------------
-function initRepertoireBanner() {
+function initMasterclasses() {
+    const monthSelect = document.getElementById("repertoireMonthSelect");
+    if (!monthSelect) return;
+
+    loadRepertoireForMonth(monthSelect.value);
+
+    monthSelect.addEventListener("change", (e) => {
+        loadRepertoireForMonth(e.target.value);
+    });
+
+    document.getElementById("chatSubmitForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const scoreId = document.getElementById("currentChatScoreId").value;
+        const msgInput = document.getElementById("chatInputMessage");
+        const msg = msgInput.value.trim();
+        if (!msg || !auth.currentUser) return;
+
+        try {
+            await addDoc(collection(db, "score_feedback"), {
+                scoreId: scoreId,
+                message: msg,
+                senderEmail: auth.currentUser.email,
+                senderName: sessionStorage.getItem("kcpo_name") || "Member",
+                createdAt: serverTimestamp()
+            });
+            msgInput.value = "";
+            loadChatMessages(scoreId); 
+        } catch (err) { console.error("Chat error", err); }
+    });
+}
+
+async function loadRepertoireForMonth(targetMonth) {
     const list = document.getElementById('repertoireList');
-    if (list) {
-        if (list.children.length === 0) {
-            list.innerHTML = `
-                <div class="col-12 text-center py-5">
-                    <div class="alert kcpo-card d-inline-block border-line text-muted-c px-4 py-3" role="alert">
-                        <i class="bi bi-calendar-x me-2 accent-gold"></i> No presentations scheduled for this month yet.
+    if (!list) return;
+    list.innerHTML = `<div class="text-center text-muted-c w-100">Loading repertoire...</div>`;
+
+    try {
+        const q = query(collection(db, "scores"), where("sessionMonth", "==", targetMonth));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            list.innerHTML = `<div class="alert kcpo-card border-line text-muted-c text-center w-100 py-4"><i class="bi bi-calendar-x me-2 accent-gold"></i> No presentations scheduled for ${targetMonth} yet.</div>`;
+            return;
+        }
+
+        list.innerHTML = "";
+        
+        const currentDate = new Date();
+        const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
+        const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
+        
+        snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            const scoreId = docSnap.id;
+            const isOwner = auth.currentUser && auth.currentUser.uid === data.uploadedByUid;
+            
+            const allowDelete = isAdmin || (isOwner && targetMonth !== currentMonthString);
+            const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recently";
+
+            list.innerHTML += `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card kcpo-card p-4 h-100 d-flex flex-column">
+                        <h5 class="accent-gold mb-1">${data.pieceTitle}</h5>
+                        <p class="small text-muted-c mb-3"><i class="bi bi-person me-1"></i>${data.uploadedByEmail}<br><i class="bi bi-clock me-1"></i>${dateStr}</p>
+                        
+                        <div class="mt-auto d-flex flex-column gap-2">
+                            <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
+                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false})">
+                                <i class="bi bi-chat-text me-1"></i> Feedback Chat
+                            </button>
+                            ${allowDelete ? `<button class="btn btn-outline-danger btn-sm mt-1" onclick="deleteScore('${scoreId}')"><i class="bi bi-trash"></i> Remove</button>` : ''}
+                        </div>
                     </div>
                 </div>`;
-        }
+        });
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger w-100">Failed to load repertoire.</div>`;
     }
 }
 
+window.deleteScore = async function(scoreId) {
+    if (!confirm("Delete this repertoire entry?")) return;
+    await deleteDoc(doc(db, "scores", scoreId));
+    document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
+};
+
+window.openFeedbackChat = function(scoreId, title, isLocked) {
+    document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
+    document.getElementById("currentChatScoreId").value = scoreId;
+    
+    const input = document.getElementById("chatInputMessage");
+    const submitBtn = document.getElementById("chatSubmitBtn");
+    const statusMsg = document.getElementById("chatStatusMsg");
+    const adminControls = document.getElementById("adminChatControls");
+    
+    adminControls.innerHTML = "";
+    
+    if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
+        input.disabled = true; submitBtn.disabled = true;
+        statusMsg.textContent = "This feedback session has been locked by an admin.";
+    } else {
+        input.disabled = !auth.currentUser; submitBtn.disabled = !auth.currentUser;
+        statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
+        
+        if (sessionStorage.getItem("kcpo_role") === "admin") {
+            adminControls.innerHTML = `<button class="btn btn-sm ${isLocked ? 'btn-success' : 'btn-warning'}" onclick="toggleChatLock('${scoreId}', ${!isLocked})">${isLocked ? 'Unlock Chat' : 'Lock Chat'}</button>`;
+        }
+    }
+    
+    loadChatMessages(scoreId);
+    new bootstrap.Modal(document.getElementById('chatModal')).show();
+};
+
+window.toggleChatLock = async function(scoreId, lockState) {
+    await updateDoc(doc(db, "scores", scoreId), { chatLocked: lockState });
+    bootstrap.Modal.getInstance(document.getElementById('chatModal')).hide();
+    document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change")); 
+};
+
+async function loadChatMessages(scoreId) {
+    const box = document.getElementById("chatMessages");
+    box.innerHTML = "<small class='text-muted-c'>Loading feedback...</small>";
+    
+    const q = query(collection(db, "score_feedback"), where("scoreId", "==", scoreId), orderBy("createdAt", "asc"));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+        box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>";
+        return;
+    }
+    
+    box.innerHTML = "";
+    const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
+    
+    snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        box.innerHTML += `
+            <div class="p-2 border-bottom border-line">
+                <div class="d-flex justify-content-between">
+                    <strong class="small accent-gold">${data.senderName || data.senderEmail}</strong>
+                    ${isAdmin ? `<i class="bi bi-trash text-danger" style="cursor:pointer;" onclick="deleteFeedbackMsg('${docSnap.id}', '${scoreId}')"></i>` : ''}
+                </div>
+                <div class="small">${data.message}</div>
+            </div>`;
+    });
+}
+
+window.deleteFeedbackMsg = async function(msgId, scoreId) {
+    if (!confirm("Delete this comment?")) return;
+    await deleteDoc(doc(db, "score_feedback", msgId));
+    loadChatMessages(scoreId);
+};
+
 // ----------------------------------------------------------------------------
-// 8. ADMIN DASHBOARD LOGIC
+// MEMBER & ADMIN DASHBOARDS
 // ----------------------------------------------------------------------------
 async function initAdminDashboard() {
     const adminContent = document.getElementById("adminContent");
     if (!adminContent) return;
 
     const accessMsg = document.getElementById("accessDeniedMsg");
-    const userRole = sessionStorage.getItem("kcpo_role");
-
-    if (userRole !== "admin") {
-        if (accessMsg) {
-            accessMsg.innerHTML = `<h3 class='text-danger'>Access Restricted</h3><p class='text-muted-c'>You do not have administrative privileges.</p>`;
-            accessMsg.classList.remove("d-none");
+    
+    onAuthStateChanged(auth, async (user) => {
+        if (user && sessionStorage.getItem("kcpo_role") === "admin") {
+            if (accessMsg) accessMsg.classList.add("d-none");
+            adminContent.classList.remove("d-none");
+            await loadAdminUsers();
+            await loadAdminFeedback();
+        } else {
+            adminContent.classList.add("d-none");
+            if (accessMsg) accessMsg.classList.remove("d-none");
         }
-        return;
-    }
-
-    if (accessMsg) accessMsg.classList.add("d-none");
-    adminContent.classList.remove("d-none");
-
-    await loadAdminUsers();
-    await loadAdminFeedback();
+    });
 }
 
 async function loadAdminUsers() {
     const userTable = document.getElementById("adminUserTableBody");
     if (!userTable) return;
-    userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">Loading members...</td></tr>`;
+    userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading member directory...</td></tr>`;
 
     try {
         const querySnapshot = await getDocs(collection(db, "users"));
         userTable.innerHTML = ""; 
 
         if (querySnapshot.empty) {
-            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No members found.</td></tr>`;
+            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No registered members found.</td></tr>`;
             return;
         }
 
@@ -420,219 +477,157 @@ async function loadAdminUsers() {
             const userData = documentSnapshot.data();
             const userId = documentSnapshot.id;
             
-            const isCoreAdmin = ADMIN_EMAILS.includes(userData.email.toLowerCase());
+            const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
             const actionButtons = isCoreAdmin ? 
-                `<span class="badge bg-secondary">Core Admin</span>` : 
+                `<span class="badge bg-secondary">System Admin</span>` : 
                 `<button class="btn btn-sm btn-outline-gold me-2" onclick="promoteUser('${userId}')" ${userData.role === 'admin' ? 'disabled' : ''}>Promote</button>
                  <button class="btn btn-sm btn-outline-danger" onclick="deleteUserRecord('${userId}')">Delete</button>`;
 
             userTable.innerHTML += `
                 <tr>
-                    <td>${userData.name || "Unknown"}</td>
-                    <td>${userData.email}</td>
-                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'}">${userData.role}</span></td>
+                    <td class="text-light">${userData.name || "Unknown Pianist"}</td>
+                    <td class="text-muted-c">${userData.email}</td>
+                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'} px-2 py-1">${userData.role.toUpperCase()}</span></td>
                     <td>${actionButtons}</td>
                 </tr>
             `;
         });
     } catch (error) {
         console.error("Error fetching users:", error);
-        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Failed to load users.</td></tr>`;
+        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory: ${error.message}</td></tr>`;
     }
 }
 
 window.promoteUser = async function(userId) {
-    if (!confirm("Are you sure you want to promote this member to Admin?")) return;
+    if (!confirm("Are you sure you want to promote this member to an Administrator?")) return;
     try {
         await updateDoc(doc(db, "users", userId), { role: "admin" });
-        alert("User promoted successfully.");
+        alert("Member successfully promoted to Administrator.");
         loadAdminUsers(); 
     } catch (error) {
         console.error("Error promoting user:", error);
-        alert("Failed to promote user.");
+        alert("Failed to promote user: " + error.message);
     }
 };
 
 window.deleteUserRecord = async function(userId) {
-    if (!confirm("Remove this user's profile from the platform? This cannot be undone.")) return;
+    if (!confirm("Are you certain you want to permanently remove this user's profile from KCPO?")) return;
     try {
         await deleteDoc(doc(db, "users", userId));
-        alert("User profile deleted.");
+        alert("Member profile successfully removed.");
         loadAdminUsers(); 
     } catch (error) {
         console.error("Error deleting user:", error);
-        alert("Failed to delete user profile.");
+        alert("Failed to remove member profile: " + error.message);
     }
 };
 
 async function loadAdminFeedback() {
     const feedbackTable = document.getElementById("adminFeedbackTableBody");
     if (!feedbackTable) return;
-    feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No feedback records found.</td></tr>`;
+    feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading feedback records...</td></tr>`;
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "score_feedback"));
+        feedbackTable.innerHTML = "";
+
+        if (querySnapshot.empty) {
+            feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`;
+            return;
+        }
+
+        querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const msgId = docSnap.id;
+            const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
+            
+            feedbackTable.innerHTML += `
+                <tr>
+                    <td class="text-light">${data.senderName || data.senderEmail}</td>
+                    <td class="text-muted-c"><span class="badge badge-kcpo">ID: ${data.scoreId.substring(0,6)}...</span></td>
+                    <td class="small">${snippet}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
+                    </td>
+                </tr>
+            `;
+        });
+    } catch (error) {
+        console.error("Error fetching feedback:", error);
+        feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`;
+    }
 }
 
-// ----------------------------------------------------------------------------
-// 9. MEMBER DASHBOARD LOGIC (Cloudinary Integration)
-// ----------------------------------------------------------------------------
+window.deleteGlobalFeedback = async function(msgId) {
+    if (!confirm("Are you sure you want to permanently delete this comment?")) return;
+    try {
+        await deleteDoc(doc(db, "score_feedback", msgId));
+        loadAdminFeedback(); 
+    } catch (error) {
+        console.error("Error deleting feedback:", error);
+        alert("Failed to delete comment: " + error.message);
+    }
+};
+
 async function initMemberDashboard() {
     const memberContent = document.getElementById("memberContent");
     if (!memberContent) return;
 
     const accessDeniedMsg = document.getElementById("memberAccessDenied");
-
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             if (accessDeniedMsg) accessDeniedMsg.classList.add("d-none");
             memberContent.classList.remove("d-none");
+            
+            const uploadForm = document.getElementById("memberScoreUploadForm");
+            if (uploadForm) {
+                uploadForm.addEventListener("submit", async (e) => {
+                    e.preventDefault();
+                    
+                    const titleInput = document.getElementById("scoreTitle");
+                    const fileInput = document.getElementById("pdfFile");
+                    const statusBox = document.getElementById("uploadStatusBox");
+                    const submitBtn = uploadForm.querySelector("button[type=submit]");
+                    const file = fileInput.files[0];
 
-            await loadAnnouncements();
-            await loadMemberInbox(user.email);
-            setupScoreUpload(user);
+                    if (!file) return;
+
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = `Uploading...`;
+                    statusBox.classList.add("d-none");
+
+                    try {
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("upload_preset", CLOUDINARY_PRESET);
+                        const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
+                        const cloudinaryData = await cloudinaryRes.json();
+                        
+                        await addDoc(collection(db, "scores"), {
+                            pieceTitle: titleInput.value.trim(),
+                            pdfUrl: cloudinaryData.secure_url,
+                            fileName: file.name,
+                            uploadedByEmail: user.email,
+                            uploadedByUid: user.uid,
+                            createdAt: serverTimestamp()
+                        });
+
+                        statusBox.className = "alert alert-success small p-2 mt-3 d-block";
+                        statusBox.textContent = "Score uploaded successfully!";
+                        uploadForm.reset();
+                    } catch (error) {
+                        statusBox.className = "alert alert-danger small p-2 mt-3 d-block";
+                        statusBox.textContent = "Upload failed: " + error.message;
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = "Upload to Repository";
+                    }
+                });
+            }
         } else {
             memberContent.classList.add("d-none");
             if (accessDeniedMsg) accessDeniedMsg.classList.remove("d-none");
-        }
-    });
-}
-
-async function loadAnnouncements() {
-    const feed = document.getElementById("announcementsFeed");
-    if (!feed) return;
-
-    try {
-        const querySnapshot = await getDocs(collection(db, "announcements"));
-        if (querySnapshot.empty) {
-            feed.innerHTML = `
-                <div class="alert kcpo-card border-line text-muted-c small p-3">
-                    No active announcements at this time.
-                </div>`;
-            return;
-        }
-
-        feed.innerHTML = "";
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            feed.innerHTML += `
-                <div class="card kcpo-card p-3 mb-2">
-                    <h6 class="accent-gold mb-1">${data.title || "Announcement"}</h6>
-                    <p class="small text-muted-c mb-1">${data.message}</p>
-                    <small class="text-faint-c" style="font-size: 0.75rem;">
-                        Posted by ${data.author || "Admin"}
-                    </small>
-                </div>`;
-        });
-    } catch (error) {
-        console.error("Error loading announcements:", error);
-    }
-}
-
-async function loadMemberInbox(userEmail) {
-    const inboxFeed = document.getElementById("memberInboxFeed");
-    if (!inboxFeed) return;
-
-    try {
-        const querySnapshot = await getDocs(collection(db, "feedback"));
-        inboxFeed.innerHTML = "";
-        let feedbackFound = false;
-
-        querySnapshot.forEach((docSnap) => {
-            const item = docSnap.data();
-            if (item.performerEmail && item.performerEmail.toLowerCase() === userEmail.toLowerCase()) {
-                feedbackFound = true;
-                inboxFeed.innerHTML += `
-                    <div class="card kcpo-card p-3 mb-2">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="badge badge-kcpo">${item.piece || "Repertoire Item"}</span>
-                            <small class="text-muted-c">From: ${item.reviewerName || "Peer Reviewer"}</small>
-                        </div>
-                        <p class="small mb-0 text-muted-c">${item.notes}</p>
-                    </div>`;
-            }
-        });
-
-        if (!feedbackFound) {
-            inboxFeed.innerHTML = `
-                <div class="card kcpo-card p-4 text-center">
-                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
-                    <p class="text-muted-c small mb-0">Your peer feedback from recent masterclasses will appear here.</p>
-                </div>`;
-        }
-    } catch (error) {
-        console.error("Error loading inbox:", error);
-    }
-}
-
-function setupScoreUpload(user) {
-    const uploadForm = document.getElementById("memberScoreUploadForm");
-    if (!uploadForm) return;
-
-    const statusBox = document.getElementById("uploadStatusBox");
-    const submitBtn = uploadForm.querySelector("button[type=submit]");
-
-    uploadForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-
-        const titleInput = document.getElementById("scoreTitle");
-        const fileInput = document.getElementById("pdfFile");
-        const file = fileInput.files[0];
-
-        if (!file || file.type !== "application/pdf") {
-            statusBox.className = "alert alert-danger small p-2 mt-3";
-            statusBox.textContent = "Please select a valid PDF file.";
-            statusBox.classList.remove("d-none");
-            return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Uploading...`;
-        statusBox.classList.add("d-none");
-
-        try {
-            const formData = new FormData();
-            formData.append("file", file);
-            
-            // NOTE: You must replace "YOUR_UNSIGNED_PRESET_NAME" with the actual preset name from your Cloudinary settings.
-            formData.append("upload_preset", "qe5c4qkd"); // Unsigned preset for raw uploads    
-
-            // Cloudinary endpoint utilizing your specific Cloud Name: xy7vxeyj
-            const cloudinaryUrl = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload";
-
-            const cloudinaryRes = await fetch(cloudinaryUrl, {
-                method: "POST",
-                body: formData
-            });
-            
-            const cloudinaryData = await cloudinaryRes.json();
-            
-            if (!cloudinaryRes.ok) {
-                throw new Error(cloudinaryData.error.message || "Cloudinary upload failed");
-            }
-
-            const downloadURL = cloudinaryData.secure_url;
-
-            await addDoc(collection(db, "scores"), {
-                pieceTitle: titleInput.value.trim(),
-                pdfUrl: downloadURL,
-                fileName: file.name,
-                uploadedByEmail: user.email,
-                uploadedByUid: user.uid,
-                createdAt: serverTimestamp()
-            });
-
-            statusBox.className = "alert alert-success small p-2 mt-3";
-            statusBox.textContent = "Score uploaded successfully! It is now accessible to the group.";
-            statusBox.classList.remove("d-none");
-
-            uploadForm.reset();
-        } catch (error) {
-            console.error("Upload error:", error);
-            statusBox.className = "alert alert-danger small p-2 mt-3";
-            statusBox.textContent = "Upload failed: " + error.message;
-            statusBox.classList.remove("d-none");
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Upload to Repository";
         }
     });
 }
@@ -645,8 +640,9 @@ document.addEventListener("DOMContentLoaded", () => {
     markActiveNavLink();
     injectAuthModal();
     initAuth();
+    populateDynamicMonths();
     initRegistrationForm();
-    initRepertoireBanner();
+    initMasterclasses();
     initAdminDashboard();
     initMemberDashboard();
 });
