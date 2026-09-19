@@ -283,7 +283,6 @@ function initRegistrationForm() {
             const cloudinaryData = await cloudinaryRes.json();
             if (!cloudinaryRes.ok) throw new Error("Cloudinary upload failed.");
 
-            // Added uploaderName to privacy structure
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
                 pdfUrl: cloudinaryData.secure_url,
@@ -328,6 +327,8 @@ function initMasterclasses() {
             const scoreId = document.getElementById("currentChatScoreId").value;
             const pieceTitle = document.getElementById("chatPieceTitle").value;
             const performerEmail = document.getElementById("chatPerformerEmail").value;
+            const performerName = chatForm.dataset.performerName || "Pianist";
+            
             const msgInput = document.getElementById("chatInputMessage");
             const submitBtn = document.getElementById("chatSubmitBtn");
             const statusMsg = document.getElementById("chatStatusMsg");
@@ -340,10 +341,12 @@ function initMasterclasses() {
             statusMsg.textContent = "";
 
             try {
+                // Modified payload to include performerName for admin display
                 await addDoc(collection(db, "score_feedback"), {
                     scoreId: scoreId,
                     pieceTitle: pieceTitle,
                     performerEmail: performerEmail,
+                    performerName: performerName,
                     message: msg,
                     senderEmail: auth.currentUser.email,
                     senderName: sessionStorage.getItem("kcpo_name") || "Member",
@@ -396,20 +399,20 @@ async function loadRepertoireForMonth(targetMonth) {
             
             const allowDelete = isAdmin || (isOwner && targetMonth !== currentMonthString);
             const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recently";
+            const uploaderName = data.uploaderName || "KCPO Pianist";
             
-            // Updated to use uploaderName instead of email
             list.innerHTML += `
                 <div class="col-md-6 col-lg-4">
                     <div class="card kcpo-card p-4 h-100 d-flex flex-column">
                         <h5 class="accent-gold mb-1">${data.pieceTitle}</h5>
                         <p class="small text-muted-c mb-3">
-                            <i class="bi bi-person me-1"></i>${data.uploaderName || "KCPO Pianist"}<br>
+                            <i class="bi bi-person me-1"></i>${uploaderName}<br>
                             <i class="bi bi-clock me-1"></i>${dateStr}
                         </p>
                         
                         <div class="mt-auto d-flex flex-column gap-2">
                             <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
-                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}')">
+                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${uploaderName.replace(/'/g, "\\'")}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
                             ${allowDelete ? `<button class="btn btn-outline-danger btn-sm mt-1" onclick="deleteScore('${scoreId}')"><i class="bi bi-trash"></i> Remove</button>` : ''}
@@ -428,12 +431,16 @@ window.deleteScore = async function(scoreId) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
 };
 
-window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail) {
+window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
     
     document.getElementById("currentChatScoreId").value = scoreId;
     document.getElementById("chatPieceTitle").value = title;
     document.getElementById("chatPerformerEmail").value = performerEmail;
+    
+    // Securely bind the performer's name to the form dataset for saving later
+    const chatForm = document.getElementById("chatSubmitForm");
+    if (chatForm) chatForm.dataset.performerName = performerName || "Pianist";
     
     const input = document.getElementById("chatInputMessage");
     const submitBtn = document.getElementById("chatSubmitBtn");
@@ -611,11 +618,17 @@ async function loadAdminFeedback() {
             const msgId = docSnap.id;
             const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
             
-            // Updated to display name and piece title instead of IDs
+            // Updated to clearly display both Performer and Sender details (Name + Email)
             feedbackTable.innerHTML += `
                 <tr>
-                    <td class="text-light">${data.senderName || "Unknown Member"}</td>
-                    <td class="text-muted-c"><span class="badge badge-kcpo">${data.pieceTitle || "Score"}</span></td>
+                    <td class="text-light">
+                        <div class="mb-1"><strong>Sender:</strong> ${data.senderName || "Unknown Member"}</div>
+                        <small class="text-muted-c">${data.senderEmail || ""}</small>
+                    </td>
+                    <td class="text-muted-c">
+                        <span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br>
+                        <small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} (${data.performerEmail || ""})</small>
+                    </td>
                     <td class="small">${snippet}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
@@ -676,7 +689,6 @@ async function initMemberDashboard() {
                         const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
                         const cloudinaryData = await cloudinaryRes.json();
                         
-                        // Added uploaderName to privacy structure
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url,
