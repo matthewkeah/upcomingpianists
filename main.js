@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * KCPO PORTAL — APP ENGINE (WITH PDF ANNOTATION)
+ * KCPO PORTAL — APP ENGINE (WITH PDF ANNOTATION & IMAGE VIEWER)
  * Loaded as a module on every page: <script type="module" src="main.js"></script>
  * ============================================================================
  */
@@ -252,10 +252,38 @@ function initAuth() {
 }
 
 // ----------------------------------------------------------------------------
+// IN-APP IMAGE VIEWER (LIGHTBOX)
+// ----------------------------------------------------------------------------
+const IMAGE_VIEWER_HTML = `
+<div class="modal fade" id="imageViewerModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0">
+            <div class="modal-header border-0 pb-0 justify-content-end">
+                <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;"><i class="bi bi-x-lg text-light"></i></button>
+            </div>
+            <div class="modal-body text-center p-0 mt-2">
+                <img id="viewerImageTarget" src="" class="img-fluid rounded" style="max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Annotated Score">
+            </div>
+        </div>
+    </div>
+</div>`;
+
+function injectImageViewer() {
+    if (!document.getElementById("imageViewerModal")) {
+        document.body.insertAdjacentHTML("beforeend", IMAGE_VIEWER_HTML);
+    }
+}
+
+window.openImageViewer = function(url) {
+    document.getElementById('viewerImageTarget').src = url;
+    new bootstrap.Modal(document.getElementById('imageViewerModal')).show();
+};
+
+// ----------------------------------------------------------------------------
 // INTERACTIVE PDF ANNOTATION ENGINE
 // ----------------------------------------------------------------------------
 const PDF_MODAL_HTML = `
-<div class="modal fade" id="annotatorModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+<div class="modal fade" id="annotatorModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" style="z-index: 1055;">
     <div class="modal-dialog modal-fullscreen">
         <div class="modal-content bg-dark text-light">
             <div class="modal-header border-secondary py-2 align-items-center">
@@ -278,6 +306,7 @@ const PDF_MODAL_HTML = `
                 <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                     <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
+                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
                 </div>
             </div>
         </div>
@@ -290,14 +319,12 @@ let pdfDoc = null,
     pageNumIsPending = null,
     pdfScale = 1.5;
     
-let pdfCanvas, pdfCtx, drawCanvas, drawCtx;
-let currentTool = 'none'; // 'none', 'pen', 'highlighter'
+let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
+let currentTool = 'none'; 
 let isDrawing = false;
-let lastX = 0, lastY = 0;
+let currentStroke = []; 
 
-// Object to store drawing data URLs mapped by page number
 let pageDrawings = {};
-// Set to track which pages actually received ink strokes
 let pagesEdited = new Set(); 
 
 function injectPdfModal() {
@@ -306,10 +333,13 @@ function injectPdfModal() {
         
         pdfCanvas = document.getElementById("pdfRenderCanvas");
         pdfCtx = pdfCanvas.getContext("2d");
+        
         drawCanvas = document.getElementById("pdfDrawCanvas");
         drawCtx = drawCanvas.getContext("2d", { willReadFrequently: true });
         
-        // Touch / Mouse Events for drawing
+        activeCanvas = document.getElementById("pdfActiveStrokeCanvas");
+        activeCtx = activeCanvas.getContext("2d", { willReadFrequently: true });
+        
         drawCanvas.addEventListener('pointerdown', startDrawing);
         drawCanvas.addEventListener('pointermove', draw);
         window.addEventListener('pointerup', stopDrawing);
@@ -346,23 +376,39 @@ window.setPdfTool = function(tool) {
     } else {
         if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
         if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
-        drawCanvas.style.pointerEvents = 'auto'; // Block scrolling, allow drawing
+        drawCanvas.style.pointerEvents = 'auto'; 
     }
 }
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
+    
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
-    lastX = (e.clientX - rect.left) * scaleX;
-    lastY = (e.clientY - rect.top) * scaleY;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    currentStroke = [{x, y}];
+    
+    activeCtx.lineCap = 'round';
+    activeCtx.lineJoin = 'round';
+    
+    if (currentTool === 'pen') {
+        activeCtx.strokeStyle = '#ff0000';
+        activeCtx.lineWidth = 3;
+        activeCtx.globalAlpha = 1.0;
+    } else if (currentTool === 'highlighter') {
+        activeCtx.strokeStyle = '#ff0000';
+        activeCtx.lineWidth = 24;
+        activeCtx.globalAlpha = 0.3; 
+    }
 }
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    e.preventDefault(); // Stop native scrolling
+    e.preventDefault(); 
     
     pagesEdited.add(pageNum); 
     
@@ -372,31 +418,25 @@ function draw(e) {
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
-    drawCtx.beginPath();
-    drawCtx.moveTo(lastX, lastY);
-    drawCtx.lineTo(x, y);
+    currentStroke.push({x, y});
     
-    if (currentTool === 'pen') {
-        drawCtx.strokeStyle = '#ff0000';
-        drawCtx.lineWidth = 3;
-        drawCtx.globalCompositeOperation = 'source-over';
-        drawCtx.globalAlpha = 1.0;
-    } else if (currentTool === 'highlighter') {
-        drawCtx.strokeStyle = '#ff2222';
-        drawCtx.lineWidth = 18;
-        drawCtx.globalCompositeOperation = 'multiply'; // Creates true highlighter effect
-        drawCtx.globalAlpha = 0.4;
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    activeCtx.beginPath();
+    activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
+    for (let i = 1; i < currentStroke.length; i++) {
+        activeCtx.lineTo(currentStroke[i].x, currentStroke[i].y);
     }
-    
-    drawCtx.lineCap = 'round';
-    drawCtx.lineJoin = 'round';
-    drawCtx.stroke();
-    
-    lastX = x;
-    lastY = y;
+    activeCtx.stroke();
 }
 
-function stopDrawing() { isDrawing = false; }
+function stopDrawing() { 
+    if (!isDrawing) return;
+    isDrawing = false;
+    
+    drawCtx.drawImage(activeCanvas, 0, 0);
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    currentStroke = [];
+}
 
 function saveCurrentPageDrawings() {
     if (pagesEdited.has(pageNum)) {
@@ -411,16 +451,21 @@ function renderPdfPage(num) {
         const viewport = page.getViewport({ scale: pdfScale });
         pdfCanvas.height = viewport.height;
         pdfCanvas.width = viewport.width;
+        
         drawCanvas.height = viewport.height;
         drawCanvas.width = viewport.width;
+        
+        activeCanvas.height = viewport.height;
+        activeCanvas.width = viewport.width;
         
         const renderContext = { canvasContext: pdfCtx, viewport: viewport };
         
         page.render(renderContext).promise.then(() => {
             pageIsRendering = false;
             
-            // Restore drawings if they exist
             drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+            
             if (pageDrawings[num]) {
                 const img = new Image();
                 img.onload = () => drawCtx.drawImage(img, 0, 0);
@@ -460,7 +505,6 @@ window.openPdfAnnotator = async function(pdfUrl) {
     if (!pdfUrl) return alert("Score file not found.");
     injectPdfModal();
     
-    // Reset state for fresh session
     pageDrawings = {};
     pagesEdited.clear();
     pageNum = 1;
@@ -484,11 +528,11 @@ window.openPdfAnnotator = async function(pdfUrl) {
 };
 
 async function processAndSaveAnnotations() {
-    saveCurrentPageDrawings(); // Catch current page
+    saveCurrentPageDrawings(); 
     
     if (pagesEdited.size === 0) {
         bootstrap.Modal.getInstance(document.getElementById('annotatorModal')).hide();
-        return; // No edits, just close
+        return; 
     }
 
     const btn = document.getElementById('btnPdfDone');
@@ -498,22 +542,17 @@ async function processAndSaveAnnotations() {
     try {
         window.pendingAttachments = [];
         
-        // Loop through only the pages that were edited
         for (let num of pagesEdited) {
-            // Fetch clean PDF page
             const page = await pdfDoc.getPage(num);
             const viewport = page.getViewport({ scale: pdfScale });
             
-            // Create hidden offscreen canvas to merge layers
             const offScreenCanvas = document.createElement('canvas');
             offScreenCanvas.width = viewport.width;
             offScreenCanvas.height = viewport.height;
             const offCtx = offScreenCanvas.getContext('2d');
             
-            // Render PDF layer
             await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
             
-            // Overlay Drawing layer
             const img = new Image();
             await new Promise((resolve) => {
                 img.onload = resolve;
@@ -521,7 +560,6 @@ async function processAndSaveAnnotations() {
             });
             offCtx.drawImage(img, 0, 0);
             
-            // Export merged image to Cloudinary
             const mergedDataUrl = offScreenCanvas.toDataURL("image/png");
             
             const formData = new FormData();
@@ -534,7 +572,6 @@ async function processAndSaveAnnotations() {
             window.pendingAttachments.push(cloudinaryData.secure_url);
         }
         
-        // Update Chat UI indicator
         const statusMsg = document.getElementById("chatStatusMsg");
         if (statusMsg) {
             statusMsg.className = "small mt-2 text-center text-success";
@@ -645,7 +682,6 @@ function initMasterclasses() {
             submitBtn.disabled = true;
             submitBtn.textContent = "Sending...";
             
-            // Capture any pending annotated images
             const finalAttachments = window.pendingAttachments || [];
 
             try {
@@ -662,7 +698,7 @@ function initMasterclasses() {
                 });
                 
                 msgInput.value = "";
-                window.pendingAttachments = []; // Reset attachments
+                window.pendingAttachments = []; 
                 
                 statusMsg.className = "small mt-2 text-center text-success";
                 statusMsg.textContent = "Feedback sent successfully!";
@@ -741,7 +777,6 @@ window.deleteScore = async function(scoreId) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
 };
 
-// Notice we now pass pdfUrl as the 6th parameter
 window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, pdfUrl) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
     
@@ -752,7 +787,6 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     const chatForm = document.getElementById("chatSubmitForm");
     if (chatForm) chatForm.dataset.performerName = performerName || "Pianist";
     
-    // Dynamically inject the "Annotate Score" button above the chat form if it doesn't exist
     let annotateBtn = document.getElementById('btnLaunchAnnotator');
     if (!annotateBtn && chatForm) {
         annotateBtn = document.createElement('button');
@@ -765,7 +799,6 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
         annotateBtn.onclick = () => openPdfAnnotator(pdfUrl);
     }
     
-    // Clear pending attachments from previous sessions
     window.pendingAttachments = [];
     
     const input = document.getElementById("chatInputMessage");
@@ -802,12 +835,12 @@ window.toggleChatLock = async function(scoreId, lockState) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change")); 
 };
 
-// Helper function to render image attachments as visual badges
 function generateAttachmentBadges(attachmentsArray) {
     if (!attachmentsArray || attachmentsArray.length === 0) return '';
     let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
     attachmentsArray.forEach((url, index) => {
-        html += `<a href="${url}" target="_blank" class="badge bg-danger text-light text-decoration-none"><i class="bi bi-image"></i> Edit ${index + 1}</a>`;
+        // Changed from an <a> tag to a styled <span> that triggers the modal
+        html += `<span onclick="openImageViewer('${url}')" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Edit ${index + 1}</span>`;
     });
     html += '</div>';
     return html;
@@ -1115,6 +1148,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initTheme();
     markActiveNavLink();
     injectAuthModal();
+    injectImageViewer(); 
     initAuth();
     populateDynamicMonths();
     initRegistrationForm();
