@@ -345,14 +345,35 @@ const CORE_ADMINS = [
 
 // 2. Authentication & Code Verification Logic
 async function sendVerificationCode(email) {
-    // Generate a 6-digit code
-    const authCode = Math.floor(100000 + Math.random() * 900000);
+    const authCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // TODO: Save 'authCode' to your database against this 'email' with an expiration timestamp
-    // TODO: Trigger your backend to send an email containing 'authCode' to the user
-    
-    console.log(`Verification code sent to ${email}`);
-    return true; 
+    try {
+        // 1. Save code to Firestore (Expires in 10 minutes)
+        const expirationTime = Date.now() + 10 * 60 * 1000;
+        await setDoc(doc(db, "auth_codes", email), {
+            code: authCode,
+            expiresAt: expirationTime
+        });
+
+        // 2. Send the email via your free Google Apps Script API
+        const scriptUrl = "https://script.google.com/macros/s/AKfycby24rlwxyI-X9--7WIz5PY7Y01RRFeeB7oFxvoUbfzEAP0dcFMiVd2J9dboB8GqunJlkg/exec"; 
+        
+        await fetch(scriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+            body: JSON.stringify({ 
+                email: email, 
+                code: authCode 
+            })
+        });
+
+        console.log("Verification code sent successfully.");
+        return true;
+        
+    } catch (error) {
+        console.error("Error during code generation or email dispatch:", error);
+        return false;
+    }
 }
 
 async function verifyCodeAndLogin(email, userEnteredCode) {
