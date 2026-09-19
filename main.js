@@ -3,14 +3,6 @@
  * KCPO PORTAL — APP ENGINE
  * Loaded as a module on every page: <script type="module" src="main.js"></script>
  * ============================================================================
- * Sections:
- *   1. Firebase init
- *   2. Theme toggle (light/dark)
- *   3. Nav active-state
- *   4. Shared auth modal (injected once, so it works from any page)
- *   5. Firebase Authentication (sign in / sign up / forgot password)
- *   6. Registration form -> Firestore ("registrations" collection)
- * ============================================================================
  */
 
 // ----------------------------------------------------------------------------
@@ -22,7 +14,8 @@ import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     sendPasswordResetEmail,
-    onAuthStateChanged
+    onAuthStateChanged,
+    signOut
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 import {
     getFirestore,
@@ -84,7 +77,7 @@ function markActiveNavLink() {
 }
 
 // ----------------------------------------------------------------------------
-// 4. SHARED AUTH MODAL (single source of truth, injected on every page)
+// 4. SHARED AUTH MODAL
 // ----------------------------------------------------------------------------
 const AUTH_MODAL_HTML = `
 <div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
@@ -164,7 +157,7 @@ function injectAuthModal() {
 }
 
 // ----------------------------------------------------------------------------
-// 5. FIREBASE AUTHENTICATION
+// 5. FIREBASE AUTHENTICATION & ROUTING
 // ----------------------------------------------------------------------------
 const ADMIN_EMAILS = [
     "matthew.keah@strathmore.edu"
@@ -177,26 +170,64 @@ function showAuthAlert(message, type = "danger") {
     authAlert.textContent = message;
 }
 
+// Global logout function attached to the window object so inline onclick handlers can reach it
+window.logoutUser = async function() {
+    try {
+        await signOut(auth);
+        sessionStorage.removeItem("kcpo_role");
+        sessionStorage.removeItem("kcpo_user");
+        alert("You have been signed out.");
+        window.location.href = "index.html";
+    } catch (error) {
+        console.error("Error signing out:", error);
+    }
+};
+
 function initAuth() {
     const navAuthBtn = document.getElementById("navAuthBtn");
 
     onAuthStateChanged(auth, (user) => {
         if (!navAuthBtn) return;
+
+        // Clean up any existing logout button to prevent duplicates
+        const existingLogout = document.getElementById("dynamicLogoutBtn");
+        if (existingLogout) existingLogout.remove();
+
         if (user) {
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+            
+            // Transform the sign-in button into a dashboard link
             navAuthBtn.innerHTML = isAdmin
                 ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin Portal`
-                : `<i class="bi bi-person-check-fill me-1"></i> My Account`;
+                : `<i class="bi bi-person-check-fill me-1"></i> Member Inbox`;
             navAuthBtn.classList.remove("btn-outline-gold");
             navAuthBtn.classList.add("btn-gold");
+            
+            // Remove modal triggers and set up redirection
+            navAuthBtn.removeAttribute("data-bs-toggle");
+            navAuthBtn.removeAttribute("data-bs-target");
+            navAuthBtn.onclick = () => {
+                window.location.href = isAdmin ? "admin.html" : "member.html";
+            };
+
+            // Inject the Sign Out button into the navbar
+            const li = document.createElement("li");
+            li.className = "nav-item ms-lg-2 my-2 my-lg-0";
+            li.id = "dynamicLogoutBtn";
+            li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
+            navAuthBtn.parentElement.parentElement.appendChild(li);
+
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
             sessionStorage.setItem("kcpo_user", user.email);
         } else {
+            // Restore default logged-out state
             navAuthBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Member Sign In`;
             navAuthBtn.classList.remove("btn-gold");
             navAuthBtn.classList.add("btn-outline-gold");
-            sessionStorage.removeItem("kcpo_role");
-            sessionStorage.removeItem("kcpo_user");
+            
+            navAuthBtn.setAttribute("data-bs-toggle", "modal");
+            navAuthBtn.setAttribute("data-bs-target", "#authModal");
+            navAuthBtn.onclick = null;
         }
     });
 
@@ -254,7 +285,6 @@ function initAuth() {
     }
 }
 
-// Translate raw Firebase error codes into plain, human sentences.
 function friendlyAuthError(error) {
     const map = {
         "auth/invalid-email": "That email address doesn't look right.",
@@ -263,13 +293,13 @@ function friendlyAuthError(error) {
         "auth/invalid-credential": "Email or password is incorrect.",
         "auth/email-already-in-use": "An account already exists for that email.",
         "auth/weak-password": "Password should be at least 6 characters.",
-        "auth/unauthorized-domain": "This domain isn't authorized in Firebase yet. Add it under Authentication → Settings → Authorized domains."
+        "auth/unauthorized-domain": "This domain isn't authorized in Firebase yet."
     };
     return map[error.code] || error.message;
 }
 
 // ----------------------------------------------------------------------------
-// 6. REGISTRATION FORM -> FIRESTORE (register.html)
+// 6. REGISTRATION FORM -> FIRESTORE
 // ----------------------------------------------------------------------------
 function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
@@ -305,7 +335,7 @@ function initRegistrationForm() {
             await addDoc(collection(db, "registrations"), payload);
             if (statusBox) {
                 statusBox.className = "alert alert-success status-alert mb-4";
-                statusBox.textContent = `Thanks, ${payload.firstName} — your repertoire is booked in for review by the Masterclass Coordinator.`;
+                statusBox.textContent = `Thanks, ${payload.firstName} — your repertoire is booked in for review.`;
                 statusBox.classList.remove("d-none");
             }
             form.reset();
@@ -324,6 +354,23 @@ function initRegistrationForm() {
 }
 
 // ----------------------------------------------------------------------------
+// 7. DYNAMIC REPERTOIRE BANNER
+// ----------------------------------------------------------------------------
+function initRepertoireBanner() {
+    const list = document.getElementById('repertoireList');
+    if (list) {
+        if (list.children.length === 0) {
+            list.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <div class="alert kcpo-card d-inline-block border-line text-muted-c px-4 py-3" role="alert">
+                        <i class="bi bi-calendar-x me-2 accent-gold"></i> No presentations scheduled for this month yet.
+                    </div>
+                </div>`;
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
 // BOOT
 // ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
@@ -332,156 +379,5 @@ document.addEventListener("DOMContentLoaded", () => {
     injectAuthModal();
     initAuth();
     initRegistrationForm();
-});
-
-// main.js
-
-// 1. Define Core Admins (Replace with your actual emails)
-const CORE_ADMINS = [
-    "matthew.keah@strathmore.edu",
-    "admin2@example.com", 
-    "admin3@example.com"
-];
-
-const scriptUrl = "https://script.google.com/macros/s/AKfycby24rlwxyI-X9--7WIz5PY7Y01RRFeeB7oFxvoUbfzEAP0dcFMiVd2J9dboB8GqunJlkg/exec"; 
-        
-        await fetch(scriptUrl, {
-            method: "POST",
-            mode: "no-cors", // Tells the browser not to block the request due to CORS
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-            body: JSON.stringify({ 
-                email: email, 
-                code: authCode 
-            })
-        });
-
-        console.log("Verification request dispatched.");
-
-// 2. Authentication & Code Verification Logic
-async function sendVerificationCode(email) {
-    const authCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    try {
-        // 1. Save code to Firestore (Expires in 10 minutes)
-        const expirationTime = Date.now() + 10 * 60 * 1000;
-        await setDoc(doc(db, "auth_codes", email), {
-            code: authCode,
-            expiresAt: expirationTime
-        });
-
-        // 2. Send the email via your free Google Apps Script API
-        const scriptUrl = "https://script.google.com/macros/s/AKfycby24rlwxyI-X9--7WIz5PY7Y01RRFeeB7oFxvoUbfzEAP0dcFMiVd2J9dboB8GqunJlkg/exec"; 
-        
-        await fetch(scriptUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-            body: JSON.stringify({ 
-                email: email, 
-                code: authCode 
-            })
-        });
-
-        console.log("Verification code sent successfully.");
-        return true;
-        
-    } catch (error) {
-        console.error("Error during code generation or email dispatch:", error);
-        return false;
-    }
-}
-
-async function verifyCodeAndLogin(email, userEnteredCode) {
-    // TODO: Fetch the saved code from your database for this email
-    const dbCode = "123456"; // Placeholder for fetched code
-    
-    if (userEnteredCode === dbCode) {
-        // Code matches - authenticate user
-        let userRole = "member";
-        
-        // Check if they are a core admin
-        if (CORE_ADMINS.includes(email)) {
-            userRole = "core_admin";
-        } else {
-            // TODO: Check database if this user was promoted to rotational admin
-            // const dbRole = await checkUserRoleInDatabase(email);
-            // if (dbRole === "admin") userRole = "admin";
-        }
-        
-        // Store session data (Preferably use secure tokens/cookies in production)
-        localStorage.setItem("kcpo_user", JSON.stringify({ email: email, role: userRole }));
-        checkAuthStatus();
-        return true;
-    }
-    return false;
-}
-
-// 3. Admin Panel Functions
-function loadAdminDashboard() {
-    const user = JSON.parse(localStorage.getItem("kcpo_user"));
-    
-    // Ensure only admins can view the dashboard
-    if (user && (user.role === "core_admin" || user.role === "admin")) {
-        document.getElementById("accessDeniedMsg").classList.add("d-none");
-        document.getElementById("adminContent").classList.remove("d-none");
-        
-        fetchUsersForAdmin();
-        fetchFeedbackForAdmin();
-    } else {
-        document.getElementById("accessDeniedMsg").innerHTML = "<h3 class='text-danger'>Access Restricted</h3><p class='text-muted-c'>You do not have the required permissions.</p>";
-    }
-}
-
-async function promoteUserToAdmin(userEmail) {
-    // TODO: Update user role in your database to 'admin'
-    console.log(`${userEmail} promoted to rotational admin.`);
-    // Refresh the table UI
-    fetchUsersForAdmin();
-}
-
-async function deleteFeedback(feedbackId) {
-    // TODO: Send delete request to database for this feedback ID
-    console.log(`Feedback ${feedbackId} deleted.`);
-    fetchFeedbackForAdmin();
-}
-
-// 4. PDF Upload & Repertoire
-document.getElementById('scoreUploadForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fileInput = document.getElementById('pdfFile');
-    const file = fileInput.files[0];
-    
-    if (file && file.type === "application/pdf") {
-        // TODO: Send file to your storage bucket (e.g., Firebase Storage, AWS S3)
-        // TODO: Save the returned file URL to the database under this month's repertoire
-        console.log(`Uploading ${file.name}...`);
-        
-        // Close modal on success
-        bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
-        fileInput.value = "";
-    } else {
-        alert("Please upload a valid PDF file.");
-    }
-});
-
-// --- Logout Logic ---
-function logoutUser() {
-    // 1. Remove the user session data from the browser
-    localStorage.removeItem("kcpo_user");
-    
-    // 2. Notify the user and redirect to the home page
-    alert("You have been signed out.");
-    window.location.href = "index.html"; 
-}
-
-// Ensure this goes inside your existing DOMContentLoaded event listener
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // ... (your existing DOMContentLoaded code like sendCodeBtn) ...
-
-    // 3. Attach logout function to the admin sign-out button
-    const logoutBtn = document.getElementById('adminLogoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logoutUser);
-    }
+    initRepertoireBanner();
 });
