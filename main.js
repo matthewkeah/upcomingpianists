@@ -114,7 +114,7 @@ function populateDynamicMonths() {
 }
 
 // ----------------------------------------------------------------------------
-// AUTHENTICATION
+// AUTHENTICATION & ADMIN ENFORCEMENT
 // ----------------------------------------------------------------------------
 const AUTH_MODAL_HTML = `
 <div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
@@ -167,14 +167,43 @@ function showAuthAlert(msg, type = "danger") {
     if (box) { box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; box.textContent = msg; }
 }
 
+// Automatically ensure core administrators always have admin rights in Firestore
+async function ensureAdminRole(user) {
+    if (!user || !user.email) return;
+    
+    const emailLower = user.email.toLowerCase();
+    
+    // Check if the signed-in user is in our admin list
+    if (ADMIN_EMAILS.includes(emailLower)) {
+        try {
+            const userRef = doc(db, "users", user.uid);
+            // Merge update to force role to admin without overwriting other fields
+            await setDoc(userRef, {
+                email: user.email,
+                role: "admin",
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            // Update local session storage
+            sessionStorage.setItem("kcpo_role", "admin");
+            console.log("Admin role enforced for:", user.email);
+        } catch (error) {
+            console.error("Failed to enforce admin role in database:", error);
+        }
+    }
+}
+
 function initAuth() {
     const navBtn = document.getElementById("navAuthBtn");
 
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
         document.getElementById("dynamicLogoutBtn")?.remove();
 
         if (user) {
+            // Self-heal the database role if this user is a core admin
+            await ensureAdminRole(user);
+
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
             navBtn.className = "btn btn-gold btn-sm px-3";
