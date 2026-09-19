@@ -6,7 +6,7 @@
  */
 
 // ----------------------------------------------------------------------------
-// 1. FIREBASE INIT & IMPORTS
+// 1. FIREBASE INIT
 // ----------------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
 import {
@@ -28,12 +28,6 @@ import {
     updateDoc,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-import {
-    getStorage,
-    ref,
-    uploadBytes,
-    getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-storage.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
@@ -47,10 +41,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // ----------------------------------------------------------------------------
-// 2. THEME TOGGLE
+// 2. THEME TOGGLE 
 // ----------------------------------------------------------------------------
 function setThemeIcon(theme) {
     const icon = document.getElementById("themeIcon");
@@ -307,8 +300,7 @@ function friendlyAuthError(error) {
         "auth/wrong-password": "Incorrect password. Try again or reset it.",
         "auth/invalid-credential": "Email or password is incorrect.",
         "auth/email-already-in-use": "An account already exists for that email.",
-        "auth/weak-password": "Password should be at least 6 characters.",
-        "auth/unauthorized-domain": "This domain isn't authorized in Firebase yet."
+        "auth/weak-password": "Password should be at least 6 characters."
     };
     return map[error.code] || error.message;
 }
@@ -390,7 +382,7 @@ function initRepertoireBanner() {
 // ----------------------------------------------------------------------------
 async function initAdminDashboard() {
     const adminContent = document.getElementById("adminContent");
-    if (!adminContent) return; 
+    if (!adminContent) return;
 
     const accessMsg = document.getElementById("accessDeniedMsg");
     const userRole = sessionStorage.getItem("kcpo_role");
@@ -481,7 +473,7 @@ async function loadAdminFeedback() {
 }
 
 // ----------------------------------------------------------------------------
-// 9. MEMBER DASHBOARD LOGIC (member.html)
+// 9. MEMBER DASHBOARD LOGIC (Cloudinary Integration)
 // ----------------------------------------------------------------------------
 async function initMemberDashboard() {
     const memberContent = document.getElementById("memberContent");
@@ -597,11 +589,27 @@ function setupScoreUpload(user) {
         statusBox.classList.add("d-none");
 
         try {
-            const storagePath = `scores/${Date.now()}_${file.name}`;
-            const fileRef = ref(storage, storagePath);
-            await uploadBytes(fileRef, file);
+            const formData = new FormData();
+            formData.append("file", file);
+            
+            // NOTE: You must replace "YOUR_UNSIGNED_PRESET_NAME" with the actual preset name from your Cloudinary settings.
+            formData.append("upload_preset", "qe5c4qkd"); // Unsigned preset for raw uploads    
 
-            const downloadURL = await getDownloadURL(fileRef);
+            // Cloudinary endpoint utilizing your specific Cloud Name: xy7vxeyj
+            const cloudinaryUrl = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload";
+
+            const cloudinaryRes = await fetch(cloudinaryUrl, {
+                method: "POST",
+                body: formData
+            });
+            
+            const cloudinaryData = await cloudinaryRes.json();
+            
+            if (!cloudinaryRes.ok) {
+                throw new Error(cloudinaryData.error.message || "Cloudinary upload failed");
+            }
+
+            const downloadURL = cloudinaryData.secure_url;
 
             await addDoc(collection(db, "scores"), {
                 pieceTitle: titleInput.value.trim(),
