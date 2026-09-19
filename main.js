@@ -448,3 +448,25 @@ document.getElementById('scoreUploadForm')?.addEventListener('submit', async (e)
         alert("Please upload a valid PDF file.");
     }
 });
+
+// --- Logout Logic ---
+function logoutUser() {
+    // 1. Remove the user session data from the browser
+    localStorage.removeItem("kcpo_user");
+    
+    // 2. Notify the user and redirect to the home page
+    alert("You have been signed out.");
+    window.location.href = "index.html"; 
+}
+
+// Ensure this goes inside your existing DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // ... (your existing DOMContentLoaded code like sendCodeBtn) ...
+
+    // 3. Attach logout function to the admin sign-out button
+    const logoutBtn = document.getElementById('adminLogoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logoutUser);
+    }
+});
