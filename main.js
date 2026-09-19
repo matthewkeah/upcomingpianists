@@ -46,10 +46,7 @@ const db = getFirestore(app);
 // GLOBAL CONSTANTS
 // ----------------------------------------------------------------------------
 const ADMIN_EMAILS = [
-    "matthew.keah@strathmore.edu",
-    "matthewstanley785@gmail.com",
-    "johnmusila001@gmail.com",
-    "jabalitongwa@gmail.com"
+    "kenyanpianists@gmail.com"
 ];
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
