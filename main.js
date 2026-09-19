@@ -21,6 +21,11 @@ import {
     getFirestore,
     collection,
     addDoc,
+    setDoc,
+    getDocs,
+    doc,
+    deleteDoc,
+    updateDoc,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 
@@ -170,7 +175,6 @@ function showAuthAlert(message, type = "danger") {
     authAlert.textContent = message;
 }
 
-// Global logout function attached to the window object so inline onclick handlers can reach it
 window.logoutUser = async function() {
     try {
         await signOut(auth);
@@ -189,28 +193,24 @@ function initAuth() {
     onAuthStateChanged(auth, (user) => {
         if (!navAuthBtn) return;
 
-        // Clean up any existing logout button to prevent duplicates
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
         if (user) {
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
             
-            // Transform the sign-in button into a dashboard link
             navAuthBtn.innerHTML = isAdmin
                 ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin Portal`
                 : `<i class="bi bi-person-check-fill me-1"></i> Member Inbox`;
             navAuthBtn.classList.remove("btn-outline-gold");
             navAuthBtn.classList.add("btn-gold");
             
-            // Remove modal triggers and set up redirection
             navAuthBtn.removeAttribute("data-bs-toggle");
             navAuthBtn.removeAttribute("data-bs-target");
             navAuthBtn.onclick = () => {
                 window.location.href = isAdmin ? "admin.html" : "member.html";
             };
 
-            // Inject the Sign Out button into the navbar
             const li = document.createElement("li");
             li.className = "nav-item ms-lg-2 my-2 my-lg-0";
             li.id = "dynamicLogoutBtn";
@@ -220,7 +220,6 @@ function initAuth() {
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
             sessionStorage.setItem("kcpo_user", user.email);
         } else {
-            // Restore default logged-out state
             navAuthBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Member Sign In`;
             navAuthBtn.classList.remove("btn-gold");
             navAuthBtn.classList.add("btn-outline-gold");
@@ -259,7 +258,17 @@ function initAuth() {
             const email = document.getElementById("signUpEmail").value.trim();
             const password = document.getElementById("signUpPassword").value;
             try {
-                await createUserWithEmailAndPassword(auth, email, password);
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const fullName = document.getElementById("signUpName").value.trim();
+                
+                // Save public profile to Firestore for admin visibility
+                await setDoc(doc(db, "users", userCredential.user.uid), {
+                    name: fullName,
+                    email: email,
+                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
+                    createdAt: serverTimestamp()
+                });
+
                 showAuthAlert("Account created! Welcome to KCPO.", "success");
                 setTimeout(() => window.location.reload(), 900);
             } catch (error) {
@@ -371,6 +380,105 @@ function initRepertoireBanner() {
 }
 
 // ----------------------------------------------------------------------------
+// 8. ADMIN DASHBOARD LOGIC
+// ----------------------------------------------------------------------------
+async function initAdminDashboard() {
+    const adminContent = document.getElementById("adminContent");
+    if (!adminContent) return; // Exit if not on admin.html
+
+    const accessMsg = document.getElementById("accessDeniedMsg");
+    const userRole = sessionStorage.getItem("kcpo_role");
+
+    // Enforce Admin-only access
+    if (userRole !== "admin") {
+        if (accessMsg) {
+            accessMsg.innerHTML = `<h3 class='text-danger'>Access Restricted</h3><p class='text-muted-c'>You do not have administrative privileges.</p>`;
+            accessMsg.classList.remove("d-none");
+        }
+        return;
+    }
+
+    // Grant access
+    if (accessMsg) accessMsg.classList.add("d-none");
+    adminContent.classList.remove("d-none");
+
+    await loadAdminUsers();
+    await loadAdminFeedback();
+}
+
+async function loadAdminUsers() {
+    const userTable = document.getElementById("adminUserTableBody");
+    if (!userTable) return;
+    userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">Loading members...</td></tr>`;
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "users"));
+        userTable.innerHTML = ""; // Clear loading state
+
+        if (querySnapshot.empty) {
+            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No members found. (Existing users must re-register to appear here).</td></tr>`;
+            return;
+        }
+
+        querySnapshot.forEach((documentSnapshot) => {
+            const userData = documentSnapshot.data();
+            const userId = documentSnapshot.id;
+            
+            // Prevent admins from deleting core admins
+            const isCoreAdmin = ADMIN_EMAILS.includes(userData.email.toLowerCase());
+            
+            const actionButtons = isCoreAdmin ? 
+                `<span class="badge bg-secondary">Core Admin</span>` : 
+                `<button class="btn btn-sm btn-outline-gold me-2" onclick="promoteUser('${userId}')" ${userData.role === 'admin' ? 'disabled' : ''}>Promote</button>
+                 <button class="btn btn-sm btn-outline-danger" onclick="deleteUserRecord('${userId}')">Delete</button>`;
+
+            userTable.innerHTML += `
+                <tr>
+                    <td>${userData.name || "Unknown"}</td>
+                    <td>${userData.email}</td>
+                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'}">${userData.role}</span></td>
+                    <td>${actionButtons}</td>
+                </tr>
+            `;
+        });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Failed to load users.</td></tr>`;
+    }
+}
+
+window.promoteUser = async function(userId) {
+    if (!confirm("Are you sure you want to promote this member to Admin?")) return;
+    try {
+        await updateDoc(doc(db, "users", userId), { role: "admin" });
+        alert("User promoted successfully.");
+        loadAdminUsers(); // Refresh table
+    } catch (error) {
+        console.error("Error promoting user:", error);
+        alert("Failed to promote user.");
+    }
+};
+
+window.deleteUserRecord = async function(userId) {
+    if (!confirm("Remove this user's profile from the platform? This cannot be undone.")) return;
+    try {
+        await deleteDoc(doc(db, "users", userId));
+        alert("User profile deleted.");
+        loadAdminUsers(); // Refresh table
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        alert("Failed to delete user profile.");
+    }
+};
+
+async function loadAdminFeedback() {
+    const feedbackTable = document.getElementById("adminFeedbackTableBody");
+    if (!feedbackTable) return;
+    
+    feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No feedback records found.</td></tr>`;
+}
+
+// ----------------------------------------------------------------------------
 // BOOT
 // ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
@@ -380,4 +488,5 @@ document.addEventListener("DOMContentLoaded", () => {
     initAuth();
     initRegistrationForm();
     initRepertoireBanner();
+    initAdminDashboard();
 });
