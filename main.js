@@ -10,7 +10,6 @@ import {
     getAuth,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    sendPasswordResetEmail,
     onAuthStateChanged,
     signOut
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
@@ -20,6 +19,7 @@ import {
     addDoc,
     setDoc,
     getDocs,
+    getDoc,
     doc,
     deleteDoc,
     updateDoc,
@@ -198,6 +198,20 @@ function initAuth() {
         if (user) {
             await ensureAdminRole(user);
 
+            // Fetch the user's real name directly from the Firestore users database
+            let realName = user.displayName;
+            try {
+                const userDoc = await getDoc(doc(db, "users", user.uid));
+                if (userDoc.exists() && userDoc.data().name) {
+                    realName = userDoc.data().name;
+                }
+            } catch (err) {
+                console.error("Could not fetch user profile name:", err);
+            }
+
+            const finalName = realName || user.email;
+            sessionStorage.setItem("kcpo_name", finalName);
+
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
             navBtn.className = "btn btn-gold btn-sm px-3";
@@ -211,7 +225,6 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            sessionStorage.setItem("kcpo_name", user.displayName || user.email);
         } else {
             navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
             navBtn.className = "btn btn-outline-gold btn-sm px-3";
@@ -341,7 +354,6 @@ function initMasterclasses() {
             statusMsg.textContent = "";
 
             try {
-                // Modified payload to include performerName for admin display
                 await addDoc(collection(db, "score_feedback"), {
                     scoreId: scoreId,
                     pieceTitle: pieceTitle,
@@ -349,7 +361,7 @@ function initMasterclasses() {
                     performerName: performerName,
                     message: msg,
                     senderEmail: auth.currentUser.email,
-                    senderName: sessionStorage.getItem("kcpo_name") || "Member",
+                    senderName: sessionStorage.getItem("kcpo_name") || auth.currentUser.email,
                     createdAt: serverTimestamp()
                 });
                 
@@ -438,7 +450,6 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     document.getElementById("chatPieceTitle").value = title;
     document.getElementById("chatPerformerEmail").value = performerEmail;
     
-    // Securely bind the performer's name to the form dataset for saving later
     const chatForm = document.getElementById("chatSubmitForm");
     if (chatForm) chatForm.dataset.performerName = performerName || "Pianist";
     
@@ -618,16 +629,21 @@ async function loadAdminFeedback() {
             const msgId = docSnap.id;
             const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
             
-            // Updated to clearly display both Performer and Sender details (Name + Email)
+            // Clean display: Only show email if it differs from the sender name
+            const displaySenderName = data.senderName || "Unknown Member";
+            const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) 
+                ? `<small class="text-muted-c">${data.senderEmail}</small>` 
+                : '';
+
             feedbackTable.innerHTML += `
                 <tr>
                     <td class="text-light">
-                        <div class="mb-1"><strong>Sender:</strong> ${data.senderName || "Unknown Member"}</div>
-                        <small class="text-muted-c">${data.senderEmail || ""}</small>
+                        <div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>
+                        ${emailHtml}
                     </td>
                     <td class="text-muted-c">
                         <span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br>
-                        <small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} (${data.performerEmail || ""})</small>
+                        <small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small>
                     </td>
                     <td class="small">${snippet}</td>
                     <td>
