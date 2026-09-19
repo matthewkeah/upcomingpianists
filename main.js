@@ -167,28 +167,23 @@ function showAuthAlert(msg, type = "danger") {
     if (box) { box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; box.textContent = msg; }
 }
 
-// Automatically ensure core administrators always have admin rights in Firestore
 async function ensureAdminRole(user) {
     if (!user || !user.email) return;
     
     const emailLower = user.email.toLowerCase();
     
-    // Check if the signed-in user is in our admin list
     if (ADMIN_EMAILS.includes(emailLower)) {
         try {
             const userRef = doc(db, "users", user.uid);
-            // Merge update to force role to admin without overwriting other fields
             await setDoc(userRef, {
                 email: user.email,
                 role: "admin",
                 updatedAt: serverTimestamp()
             }, { merge: true });
             
-            // Update local session storage
             sessionStorage.setItem("kcpo_role", "admin");
-            console.log("Admin role enforced for:", user.email);
         } catch (error) {
-            console.error("Failed to enforce admin role in database:", error);
+            console.error("Failed to enforce admin role:", error);
         }
     }
 }
@@ -201,7 +196,6 @@ function initAuth() {
         document.getElementById("dynamicLogoutBtn")?.remove();
 
         if (user) {
-            // Self-heal the database role if this user is a core admin
             await ensureAdminRole(user);
 
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
@@ -289,6 +283,7 @@ function initRegistrationForm() {
             const cloudinaryData = await cloudinaryRes.json();
             if (!cloudinaryRes.ok) throw new Error("Cloudinary upload failed.");
 
+            // Added uploaderName to privacy structure
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
                 pdfUrl: cloudinaryData.secure_url,
@@ -296,6 +291,7 @@ function initRegistrationForm() {
                 sessionMonth: month,
                 uploadedByEmail: auth.currentUser.email,
                 uploadedByUid: auth.currentUser.uid,
+                uploaderName: sessionStorage.getItem("kcpo_name") || "Member", 
                 createdAt: serverTimestamp()
             });
 
@@ -339,7 +335,6 @@ function initMasterclasses() {
             const msg = msgInput.value.trim();
             if (!msg || !auth.currentUser) return;
 
-            // UI Feedback: Disable button and show sending state
             submitBtn.disabled = true;
             submitBtn.textContent = "Sending...";
             statusMsg.textContent = "";
@@ -359,7 +354,6 @@ function initMasterclasses() {
                 statusMsg.className = "small mt-2 text-center text-success";
                 statusMsg.textContent = "Feedback sent successfully!";
                 
-                // Clear the success message after 3 seconds
                 setTimeout(() => { statusMsg.textContent = ""; }, 3000);
                 
                 loadChatMessages(scoreId); 
@@ -402,12 +396,16 @@ async function loadRepertoireForMonth(targetMonth) {
             
             const allowDelete = isAdmin || (isOwner && targetMonth !== currentMonthString);
             const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recently";
-
+            
+            // Updated to use uploaderName instead of email
             list.innerHTML += `
                 <div class="col-md-6 col-lg-4">
                     <div class="card kcpo-card p-4 h-100 d-flex flex-column">
                         <h5 class="accent-gold mb-1">${data.pieceTitle}</h5>
-                        <p class="small text-muted-c mb-3"><i class="bi bi-person me-1"></i>${data.uploadedByEmail}<br><i class="bi bi-clock me-1"></i>${dateStr}</p>
+                        <p class="small text-muted-c mb-3">
+                            <i class="bi bi-person me-1"></i>${data.uploaderName || "KCPO Pianist"}<br>
+                            <i class="bi bi-clock me-1"></i>${dateStr}
+                        </p>
                         
                         <div class="mt-auto d-flex flex-column gap-2">
                             <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
@@ -430,11 +428,9 @@ window.deleteScore = async function(scoreId) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
 };
 
-// Updated function to receive and store performer details
 window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
     
-    // Bind routing data to hidden inputs
     document.getElementById("currentChatScoreId").value = scoreId;
     document.getElementById("chatPieceTitle").value = title;
     document.getElementById("chatPerformerEmail").value = performerEmail;
@@ -615,10 +611,11 @@ async function loadAdminFeedback() {
             const msgId = docSnap.id;
             const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
             
+            // Updated to display name and piece title instead of IDs
             feedbackTable.innerHTML += `
                 <tr>
-                    <td class="text-light">${data.senderName || data.senderEmail}</td>
-                    <td class="text-muted-c"><span class="badge badge-kcpo">ID: ${data.scoreId.substring(0,6)}...</span></td>
+                    <td class="text-light">${data.senderName || "Unknown Member"}</td>
+                    <td class="text-muted-c"><span class="badge badge-kcpo">${data.pieceTitle || "Score"}</span></td>
                     <td class="small">${snippet}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
@@ -679,12 +676,14 @@ async function initMemberDashboard() {
                         const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
                         const cloudinaryData = await cloudinaryRes.json();
                         
+                        // Added uploaderName to privacy structure
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url,
                             fileName: file.name,
                             uploadedByEmail: user.email,
                             uploadedByUid: user.uid,
+                            uploaderName: sessionStorage.getItem("kcpo_name") || "Member",
                             createdAt: serverTimestamp()
                         });
 
@@ -707,7 +706,6 @@ async function initMemberDashboard() {
     });
 }
 
-// Updated Inbox Fetching Logic to retrieve and sort targeted feedback
 async function loadMemberInbox(userEmail) {
     const inboxFeed = document.getElementById("memberInboxFeed");
     if (!inboxFeed) return;
@@ -726,7 +724,6 @@ async function loadMemberInbox(userEmail) {
             return;
         }
 
-        // Sort messages chronologically in JavaScript to bypass Firebase composite index requirements
         let messages = [];
         querySnapshot.forEach(docSnap => messages.push(docSnap.data()));
         messages.sort((a, b) => {
@@ -741,7 +738,7 @@ async function loadMemberInbox(userEmail) {
                 <div class="card kcpo-card p-3 mb-2">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="badge badge-kcpo">${item.pieceTitle || "Repertoire Item"}</span>
-                        <small class="text-muted-c">From: ${item.senderName || item.senderEmail} • ${dateStr}</small>
+                        <small class="text-muted-c">From: ${item.senderName || "Member"} • ${dateStr}</small>
                     </div>
                     <p class="small mb-0 text-muted-c">${item.message}</p>
                 </div>`;
