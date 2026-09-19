@@ -343,6 +343,20 @@ const CORE_ADMINS = [
     "admin3@example.com"
 ];
 
+const scriptUrl = "https://script.google.com/macros/s/AKfycby24rlwxyI-X9--7WIz5PY7Y01RRFeeB7oFxvoUbfzEAP0dcFMiVd2J9dboB8GqunJlkg/exec"; 
+        
+        await fetch(scriptUrl, {
+            method: "POST",
+            mode: "no-cors", // Tells the browser not to block the request due to CORS
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+            body: JSON.stringify({ 
+                email: email, 
+                code: authCode 
+            })
+        });
+
+        console.log("Verification request dispatched.");
+
 // 2. Authentication & Code Verification Logic
 async function sendVerificationCode(email) {
     const authCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -360,6 +374,7 @@ async function sendVerificationCode(email) {
         
         await fetch(scriptUrl, {
             method: "POST",
+            mode: "no-cors",
             headers: { "Content-Type": "text/plain;charset=utf-8" }, 
             body: JSON.stringify({ 
                 email: email, 
