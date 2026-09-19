@@ -130,13 +130,17 @@
                     </div>
                     
                     <form id="chatSubmitForm" class="mt-3 pt-3 border-top">
+                        <!-- Hidden fields to route data to the inbox -->
                         <input type="hidden" id="currentChatScoreId">
+                        <input type="hidden" id="chatPieceTitle">
+                        <input type="hidden" id="chatPerformerEmail">
+                        
                         <div class="input-group">
                             <input type="text" id="chatInputMessage" class="form-control field" placeholder="Add your feedback..." required>
                             <button class="btn btn-gold" type="submit" id="chatSubmitBtn">Send</button>
                         </div>
                     </form>
-                    <div id="chatStatusMsg" class="small mt-2 text-center text-muted-c"></div>
+                    <div id="chatStatusMsg" class="small mt-2 text-center text-muted-c" style="height: 20px;"></div>
                 </div>
             </div>
         </div>

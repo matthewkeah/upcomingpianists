@@ -45,7 +45,12 @@ const db = getFirestore(app);
 // ----------------------------------------------------------------------------
 // GLOBAL CONSTANTS
 // ----------------------------------------------------------------------------
-const ADMIN_EMAILS = ["matthew.keah@strathmore.edu"];
+const ADMIN_EMAILS = [
+    "matthew.keah@strathmore.edu",
+    "matthewstanley785@gmail.com",
+    "johnmusila001@gmail.com",
+    "jabalitongwa@gmail.com"
+];
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
@@ -177,7 +182,6 @@ function initAuth() {
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
             navBtn.className = "btn btn-gold btn-sm px-3";
             navBtn.removeAttribute("data-bs-toggle");
-            // Fixed the routing back to admin.html
             navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
 
             const li = document.createElement("li");
@@ -294,25 +298,55 @@ function initMasterclasses() {
         loadRepertoireForMonth(e.target.value);
     });
 
-    document.getElementById("chatSubmitForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const scoreId = document.getElementById("currentChatScoreId").value;
-        const msgInput = document.getElementById("chatInputMessage");
-        const msg = msgInput.value.trim();
-        if (!msg || !auth.currentUser) return;
+    const chatForm = document.getElementById("chatSubmitForm");
+    if (chatForm) {
+        chatForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const scoreId = document.getElementById("currentChatScoreId").value;
+            const pieceTitle = document.getElementById("chatPieceTitle").value;
+            const performerEmail = document.getElementById("chatPerformerEmail").value;
+            const msgInput = document.getElementById("chatInputMessage");
+            const submitBtn = document.getElementById("chatSubmitBtn");
+            const statusMsg = document.getElementById("chatStatusMsg");
+            
+            const msg = msgInput.value.trim();
+            if (!msg || !auth.currentUser) return;
 
-        try {
-            await addDoc(collection(db, "score_feedback"), {
-                scoreId: scoreId,
-                message: msg,
-                senderEmail: auth.currentUser.email,
-                senderName: sessionStorage.getItem("kcpo_name") || "Member",
-                createdAt: serverTimestamp()
-            });
-            msgInput.value = "";
-            loadChatMessages(scoreId); 
-        } catch (err) { console.error("Chat error", err); }
-    });
+            // UI Feedback: Disable button and show sending state
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Sending...";
+            statusMsg.textContent = "";
+
+            try {
+                await addDoc(collection(db, "score_feedback"), {
+                    scoreId: scoreId,
+                    pieceTitle: pieceTitle,
+                    performerEmail: performerEmail,
+                    message: msg,
+                    senderEmail: auth.currentUser.email,
+                    senderName: sessionStorage.getItem("kcpo_name") || "Member",
+                    createdAt: serverTimestamp()
+                });
+                
+                msgInput.value = "";
+                statusMsg.className = "small mt-2 text-center text-success";
+                statusMsg.textContent = "Feedback sent successfully!";
+                
+                // Clear the success message after 3 seconds
+                setTimeout(() => { statusMsg.textContent = ""; }, 3000);
+                
+                loadChatMessages(scoreId); 
+            } catch (err) { 
+                console.error("Chat error", err); 
+                statusMsg.className = "small mt-2 text-center text-danger";
+                statusMsg.textContent = "Failed to send feedback.";
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Send";
+            }
+        });
+    }
 }
 
 async function loadRepertoireForMonth(targetMonth) {
@@ -351,7 +385,7 @@ async function loadRepertoireForMonth(targetMonth) {
                         
                         <div class="mt-auto d-flex flex-column gap-2">
                             <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
-                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false})">
+                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
                             ${allowDelete ? `<button class="btn btn-outline-danger btn-sm mt-1" onclick="deleteScore('${scoreId}')"><i class="bi bi-trash"></i> Remove</button>` : ''}
@@ -370,9 +404,14 @@ window.deleteScore = async function(scoreId) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
 };
 
-window.openFeedbackChat = function(scoreId, title, isLocked) {
+// Updated function to receive and store performer details
+window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
+    
+    // Bind routing data to hidden inputs
     document.getElementById("currentChatScoreId").value = scoreId;
+    document.getElementById("chatPieceTitle").value = title;
+    document.getElementById("chatPerformerEmail").value = performerEmail;
     
     const input = document.getElementById("chatInputMessage");
     const submitBtn = document.getElementById("chatSubmitBtn");
@@ -380,12 +419,15 @@ window.openFeedbackChat = function(scoreId, title, isLocked) {
     const adminControls = document.getElementById("adminChatControls");
     
     adminControls.innerHTML = "";
+    statusMsg.textContent = ""; 
     
     if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
         input.disabled = true; submitBtn.disabled = true;
+        statusMsg.className = "small mt-2 text-center text-danger";
         statusMsg.textContent = "This feedback session has been locked by an admin.";
     } else {
         input.disabled = !auth.currentUser; submitBtn.disabled = !auth.currentUser;
+        statusMsg.className = "small mt-2 text-center text-muted-c";
         statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
         
         if (sessionStorage.getItem("kcpo_role") === "admin") {
@@ -580,6 +622,8 @@ async function initMemberDashboard() {
             if (accessDeniedMsg) accessDeniedMsg.classList.add("d-none");
             memberContent.classList.remove("d-none");
             
+            await loadMemberInbox(user.email);
+            
             const uploadForm = document.getElementById("memberScoreUploadForm");
             if (uploadForm) {
                 uploadForm.addEventListener("submit", async (e) => {
@@ -630,6 +674,50 @@ async function initMemberDashboard() {
             if (accessDeniedMsg) accessDeniedMsg.classList.remove("d-none");
         }
     });
+}
+
+// Updated Inbox Fetching Logic to retrieve and sort targeted feedback
+async function loadMemberInbox(userEmail) {
+    const inboxFeed = document.getElementById("memberInboxFeed");
+    if (!inboxFeed) return;
+
+    try {
+        const q = query(collection(db, "score_feedback"), where("performerEmail", "==", userEmail));
+        const querySnapshot = await getDocs(q);
+        inboxFeed.innerHTML = "";
+        
+        if (querySnapshot.empty) {
+            inboxFeed.innerHTML = `
+                <div class="card kcpo-card p-4 text-center">
+                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
+                    <p class="text-muted-c small mb-0">Your peer feedback from recent masterclasses will appear here.</p>
+                </div>`;
+            return;
+        }
+
+        // Sort messages chronologically in JavaScript to bypass Firebase composite index requirements
+        let messages = [];
+        querySnapshot.forEach(docSnap => messages.push(docSnap.data()));
+        messages.sort((a, b) => {
+            const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
+            const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+            return timeB - timeA; 
+        });
+
+        messages.forEach((item) => {
+            const dateStr = item.createdAt ? item.createdAt.toDate().toLocaleDateString() : "Recently";
+            inboxFeed.innerHTML += `
+                <div class="card kcpo-card p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="badge badge-kcpo">${item.pieceTitle || "Repertoire Item"}</span>
+                        <small class="text-muted-c">From: ${item.senderName || item.senderEmail} • ${dateStr}</small>
+                    </div>
+                    <p class="small mb-0 text-muted-c">${item.message}</p>
+                </div>`;
+        });
+    } catch (error) {
+        console.error("Error loading inbox:", error);
+    }
 }
 
 // ----------------------------------------------------------------------------
