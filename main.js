@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * KCPO PORTAL — APP ENGINE
+ * KCPO PORTAL — APP ENGINE (WITH PDF ANNOTATION)
  * Loaded as a module on every page: <script type="module" src="main.js"></script>
  * ============================================================================
  */
@@ -43,13 +43,16 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ----------------------------------------------------------------------------
-// GLOBAL CONSTANTS
+// GLOBAL CONSTANTS & STATE
 // ----------------------------------------------------------------------------
 const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
+const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
+
+window.pendingAttachments = []; 
 
 // ----------------------------------------------------------------------------
 // THEME & NAV STATE
@@ -75,9 +78,6 @@ function markActiveNavLink() {
     });
 }
 
-// ----------------------------------------------------------------------------
-// DYNAMIC MONTH GENERATOR
-// ----------------------------------------------------------------------------
 function populateDynamicMonths() {
     const registerDropdown = document.getElementById("sessionMonth");
     const masterclassDropdown = document.getElementById("repertoireMonthSelect");
@@ -169,18 +169,14 @@ function showAuthAlert(msg, type = "danger") {
 
 async function ensureAdminRole(user) {
     if (!user || !user.email) return;
-    
     const emailLower = user.email.toLowerCase();
-    
     if (ADMIN_EMAILS.includes(emailLower)) {
         try {
-            const userRef = doc(db, "users", user.uid);
-            await setDoc(userRef, {
+            await setDoc(doc(db, "users", user.uid), {
                 email: user.email,
                 role: "admin",
                 updatedAt: serverTimestamp()
             }, { merge: true });
-            
             sessionStorage.setItem("kcpo_role", "admin");
         } catch (error) {
             console.error("Failed to enforce admin role:", error);
@@ -198,16 +194,13 @@ function initAuth() {
         if (user) {
             await ensureAdminRole(user);
 
-            // Fetch the user's real name directly from the Firestore users database
             let realName = user.displayName;
             try {
                 const userDoc = await getDoc(doc(db, "users", user.uid));
                 if (userDoc.exists() && userDoc.data().name) {
                     realName = userDoc.data().name;
                 }
-            } catch (err) {
-                console.error("Could not fetch user profile name:", err);
-            }
+            } catch (err) {}
 
             const finalName = realName || user.email;
             sessionStorage.setItem("kcpo_name", finalName);
@@ -256,6 +249,306 @@ function initAuth() {
             window.location.reload();
         } catch (err) { showAuthAlert(err.message); }
     });
+}
+
+// ----------------------------------------------------------------------------
+// INTERACTIVE PDF ANNOTATION ENGINE
+// ----------------------------------------------------------------------------
+const PDF_MODAL_HTML = `
+<div class="modal fade" id="annotatorModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary py-2 align-items-center">
+                <h5 class="modal-title fs-6 accent-gold"><i class="bi bi-pen"></i> Score Editor</h5>
+                <div class="ms-auto d-flex gap-2 align-items-center">
+                    <span id="pdfPageIndicator" class="small me-2 text-muted-c">Page 1</span>
+                    <button class="btn btn-sm btn-outline-secondary" id="btnPdfPrev"><i class="bi bi-chevron-left"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="btnPdfNext"><i class="bi bi-chevron-right"></i></button>
+                    <div class="vr mx-1 bg-secondary"></div>
+                    <button class="btn btn-sm btn-success" id="btnPdfDone">Done <span id="pdfSpinner" class="spinner-border spinner-border-sm d-none"></span></button>
+                    <button class="btn btn-sm btn-outline-light" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+                </div>
+            </div>
+            <div class="bg-secondary text-center p-2 d-flex justify-content-center gap-3 border-bottom border-dark">
+                <button class="btn btn-sm btn-outline-light active" id="toolMove" onclick="setPdfTool('none')"><i class="bi bi-arrows-move"></i> Zoom / Move</button>
+                <button class="btn btn-sm btn-outline-danger" id="toolPen" onclick="setPdfTool('pen')"><i class="bi bi-pen"></i> Red Pen</button>
+                <button class="btn btn-sm btn-outline-warning" id="toolHighlight" onclick="setPdfTool('highlighter')"><i class="bi bi-marker"></i> Highlighter</button>
+            </div>
+            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
+                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
+                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>`;
+
+let pdfDoc = null,
+    pageNum = 1,
+    pageIsRendering = false,
+    pageNumIsPending = null,
+    pdfScale = 1.5;
+    
+let pdfCanvas, pdfCtx, drawCanvas, drawCtx;
+let currentTool = 'none'; // 'none', 'pen', 'highlighter'
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+
+// Object to store drawing data URLs mapped by page number
+let pageDrawings = {};
+// Set to track which pages actually received ink strokes
+let pagesEdited = new Set(); 
+
+function injectPdfModal() {
+    if (!document.getElementById("annotatorModal")) {
+        document.body.insertAdjacentHTML("beforeend", PDF_MODAL_HTML);
+        
+        pdfCanvas = document.getElementById("pdfRenderCanvas");
+        pdfCtx = pdfCanvas.getContext("2d");
+        drawCanvas = document.getElementById("pdfDrawCanvas");
+        drawCtx = drawCanvas.getContext("2d", { willReadFrequently: true });
+        
+        // Touch / Mouse Events for drawing
+        drawCanvas.addEventListener('pointerdown', startDrawing);
+        drawCanvas.addEventListener('pointermove', draw);
+        window.addEventListener('pointerup', stopDrawing);
+        
+        document.getElementById('btnPdfPrev').addEventListener('click', onPrevPage);
+        document.getElementById('btnPdfNext').addEventListener('click', onNextPage);
+        document.getElementById('btnPdfDone').addEventListener('click', processAndSaveAnnotations);
+    }
+}
+
+async function loadPDFJSLibrary() {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        script.onload = () => {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            resolve(window.pdfjsLib);
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+window.setPdfTool = function(tool) {
+    currentTool = tool;
+    document.getElementById('toolMove').classList.remove('active');
+    document.getElementById('toolPen').classList.remove('active');
+    document.getElementById('toolHighlight').classList.remove('active');
+    
+    if (tool === 'none') {
+        document.getElementById('toolMove').classList.add('active');
+        drawCanvas.style.pointerEvents = 'none'; 
+    } else {
+        if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
+        if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
+        drawCanvas.style.pointerEvents = 'auto'; // Block scrolling, allow drawing
+    }
+}
+
+function startDrawing(e) {
+    if (currentTool === 'none') return;
+    isDrawing = true;
+    const rect = drawCanvas.getBoundingClientRect();
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
+    lastX = (e.clientX - rect.left) * scaleX;
+    lastY = (e.clientY - rect.top) * scaleY;
+}
+
+function draw(e) {
+    if (!isDrawing || currentTool === 'none') return;
+    e.preventDefault(); // Stop native scrolling
+    
+    pagesEdited.add(pageNum); 
+    
+    const rect = drawCanvas.getBoundingClientRect();
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX, lastY);
+    drawCtx.lineTo(x, y);
+    
+    if (currentTool === 'pen') {
+        drawCtx.strokeStyle = '#ff0000';
+        drawCtx.lineWidth = 3;
+        drawCtx.globalCompositeOperation = 'source-over';
+        drawCtx.globalAlpha = 1.0;
+    } else if (currentTool === 'highlighter') {
+        drawCtx.strokeStyle = '#ff2222';
+        drawCtx.lineWidth = 18;
+        drawCtx.globalCompositeOperation = 'multiply'; // Creates true highlighter effect
+        drawCtx.globalAlpha = 0.4;
+    }
+    
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    drawCtx.stroke();
+    
+    lastX = x;
+    lastY = y;
+}
+
+function stopDrawing() { isDrawing = false; }
+
+function saveCurrentPageDrawings() {
+    if (pagesEdited.has(pageNum)) {
+        pageDrawings[pageNum] = drawCanvas.toDataURL("image/png");
+    }
+}
+
+function renderPdfPage(num) {
+    pageIsRendering = true;
+    
+    pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale: pdfScale });
+        pdfCanvas.height = viewport.height;
+        pdfCanvas.width = viewport.width;
+        drawCanvas.height = viewport.height;
+        drawCanvas.width = viewport.width;
+        
+        const renderContext = { canvasContext: pdfCtx, viewport: viewport };
+        
+        page.render(renderContext).promise.then(() => {
+            pageIsRendering = false;
+            
+            // Restore drawings if they exist
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            if (pageDrawings[num]) {
+                const img = new Image();
+                img.onload = () => drawCtx.drawImage(img, 0, 0);
+                img.src = pageDrawings[num];
+            }
+            
+            if (pageNumIsPending !== null) {
+                renderPdfPage(pageNumIsPending);
+                pageNumIsPending = null;
+            }
+        });
+    });
+    
+    document.getElementById('pdfPageIndicator').textContent = `Page ${num} of ${pdfDoc.numPages}`;
+}
+
+function queueRenderPage(num) {
+    if (pageIsRendering) pageNumIsPending = num;
+    else renderPdfPage(num);
+}
+
+function onPrevPage() {
+    if (pageNum <= 1) return;
+    saveCurrentPageDrawings();
+    pageNum--;
+    queueRenderPage(pageNum);
+}
+
+function onNextPage() {
+    if (pageNum >= pdfDoc.numPages) return;
+    saveCurrentPageDrawings();
+    pageNum++;
+    queueRenderPage(pageNum);
+}
+
+window.openPdfAnnotator = async function(pdfUrl) {
+    if (!pdfUrl) return alert("Score file not found.");
+    injectPdfModal();
+    
+    // Reset state for fresh session
+    pageDrawings = {};
+    pagesEdited.clear();
+    pageNum = 1;
+    setPdfTool('none');
+    
+    const annotatorModal = new bootstrap.Modal(document.getElementById('annotatorModal'));
+    annotatorModal.show();
+    
+    pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+    pdfCtx.fillText("Loading PDF Engine...", 10, 50);
+    
+    try {
+        const pdfjs = await loadPDFJSLibrary();
+        const loadingTask = pdfjs.getDocument(pdfUrl);
+        pdfDoc = await loadingTask.promise;
+        renderPdfPage(pageNum);
+    } catch (err) {
+        console.error("PDF Load Error:", err);
+        alert("Failed to load PDF viewer.");
+    }
+};
+
+async function processAndSaveAnnotations() {
+    saveCurrentPageDrawings(); // Catch current page
+    
+    if (pagesEdited.size === 0) {
+        bootstrap.Modal.getInstance(document.getElementById('annotatorModal')).hide();
+        return; // No edits, just close
+    }
+
+    const btn = document.getElementById('btnPdfDone');
+    const spinner = document.getElementById('pdfSpinner');
+    btn.disabled = true; spinner.classList.remove('d-none');
+    
+    try {
+        window.pendingAttachments = [];
+        
+        // Loop through only the pages that were edited
+        for (let num of pagesEdited) {
+            // Fetch clean PDF page
+            const page = await pdfDoc.getPage(num);
+            const viewport = page.getViewport({ scale: pdfScale });
+            
+            // Create hidden offscreen canvas to merge layers
+            const offScreenCanvas = document.createElement('canvas');
+            offScreenCanvas.width = viewport.width;
+            offScreenCanvas.height = viewport.height;
+            const offCtx = offScreenCanvas.getContext('2d');
+            
+            // Render PDF layer
+            await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
+            
+            // Overlay Drawing layer
+            const img = new Image();
+            await new Promise((resolve) => {
+                img.onload = resolve;
+                img.src = pageDrawings[num];
+            });
+            offCtx.drawImage(img, 0, 0);
+            
+            // Export merged image to Cloudinary
+            const mergedDataUrl = offScreenCanvas.toDataURL("image/png");
+            
+            const formData = new FormData();
+            formData.append("file", mergedDataUrl);
+            formData.append("upload_preset", CLOUDINARY_PRESET);
+            
+            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
+            const cloudinaryData = await cloudinaryRes.json();
+            
+            window.pendingAttachments.push(cloudinaryData.secure_url);
+        }
+        
+        // Update Chat UI indicator
+        const statusMsg = document.getElementById("chatStatusMsg");
+        if (statusMsg) {
+            statusMsg.className = "small mt-2 text-center text-success";
+            statusMsg.textContent = `${window.pendingAttachments.length} annotated page(s) attached. Add text and send!`;
+        }
+        
+        bootstrap.Modal.getInstance(document.getElementById('annotatorModal')).hide();
+        
+    } catch (error) {
+        console.error("Failed to process annotations:", error);
+        alert("Failed to save edits.");
+    } finally {
+        btn.disabled = false; spinner.classList.add('d-none');
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -351,7 +644,9 @@ function initMasterclasses() {
 
             submitBtn.disabled = true;
             submitBtn.textContent = "Sending...";
-            statusMsg.textContent = "";
+            
+            // Capture any pending annotated images
+            const finalAttachments = window.pendingAttachments || [];
 
             try {
                 await addDoc(collection(db, "score_feedback"), {
@@ -360,12 +655,15 @@ function initMasterclasses() {
                     performerEmail: performerEmail,
                     performerName: performerName,
                     message: msg,
+                    attachments: finalAttachments,
                     senderEmail: auth.currentUser.email,
                     senderName: sessionStorage.getItem("kcpo_name") || auth.currentUser.email,
                     createdAt: serverTimestamp()
                 });
                 
                 msgInput.value = "";
+                window.pendingAttachments = []; // Reset attachments
+                
                 statusMsg.className = "small mt-2 text-center text-success";
                 statusMsg.textContent = "Feedback sent successfully!";
                 
@@ -424,7 +722,7 @@ async function loadRepertoireForMonth(targetMonth) {
                         
                         <div class="mt-auto d-flex flex-column gap-2">
                             <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
-                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${uploaderName.replace(/'/g, "\\'")}')">
+                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${uploaderName.replace(/'/g, "\\'")}', '${data.pdfUrl}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
                             ${allowDelete ? `<button class="btn btn-outline-danger btn-sm mt-1" onclick="deleteScore('${scoreId}')"><i class="bi bi-trash"></i> Remove</button>` : ''}
@@ -443,7 +741,8 @@ window.deleteScore = async function(scoreId) {
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
 };
 
-window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName) {
+// Notice we now pass pdfUrl as the 6th parameter
+window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, pdfUrl) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
     
     document.getElementById("currentChatScoreId").value = scoreId;
@@ -452,6 +751,22 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     
     const chatForm = document.getElementById("chatSubmitForm");
     if (chatForm) chatForm.dataset.performerName = performerName || "Pianist";
+    
+    // Dynamically inject the "Annotate Score" button above the chat form if it doesn't exist
+    let annotateBtn = document.getElementById('btnLaunchAnnotator');
+    if (!annotateBtn && chatForm) {
+        annotateBtn = document.createElement('button');
+        annotateBtn.id = 'btnLaunchAnnotator';
+        annotateBtn.className = 'btn btn-outline-danger btn-sm w-100 mb-3';
+        annotateBtn.innerHTML = '<i class="bi bi-pen"></i> Open Score to Annotate';
+        chatForm.parentNode.insertBefore(annotateBtn, chatForm);
+    }
+    if (annotateBtn) {
+        annotateBtn.onclick = () => openPdfAnnotator(pdfUrl);
+    }
+    
+    // Clear pending attachments from previous sessions
+    window.pendingAttachments = [];
     
     const input = document.getElementById("chatInputMessage");
     const submitBtn = document.getElementById("chatSubmitBtn");
@@ -463,10 +778,12 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     
     if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
         input.disabled = true; submitBtn.disabled = true;
+        if(annotateBtn) annotateBtn.disabled = true;
         statusMsg.className = "small mt-2 text-center text-danger";
         statusMsg.textContent = "This feedback session has been locked by an admin.";
     } else {
         input.disabled = !auth.currentUser; submitBtn.disabled = !auth.currentUser;
+        if(annotateBtn) annotateBtn.disabled = !auth.currentUser;
         statusMsg.className = "small mt-2 text-center text-muted-c";
         statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
         
@@ -484,6 +801,17 @@ window.toggleChatLock = async function(scoreId, lockState) {
     bootstrap.Modal.getInstance(document.getElementById('chatModal')).hide();
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change")); 
 };
+
+// Helper function to render image attachments as visual badges
+function generateAttachmentBadges(attachmentsArray) {
+    if (!attachmentsArray || attachmentsArray.length === 0) return '';
+    let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
+    attachmentsArray.forEach((url, index) => {
+        html += `<a href="${url}" target="_blank" class="badge bg-danger text-light text-decoration-none"><i class="bi bi-image"></i> Edit ${index + 1}</a>`;
+    });
+    html += '</div>';
+    return html;
+}
 
 async function loadChatMessages(scoreId) {
     const box = document.getElementById("chatMessages");
@@ -510,6 +838,7 @@ async function loadChatMessages(scoreId) {
                         ${isAdmin ? `<i class="bi bi-trash text-danger" style="cursor:pointer;" onclick="deleteFeedbackMsg('${docSnap.id}', '${scoreId}')"></i>` : ''}
                     </div>
                     <div class="small">${data.message}</div>
+                    ${generateAttachmentBadges(data.attachments)}
                 </div>`;
         });
     } catch (error) {
@@ -629,7 +958,6 @@ async function loadAdminFeedback() {
             const msgId = docSnap.id;
             const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
             
-            // Clean display: Only show email if it differs from the sender name
             const displaySenderName = data.senderName || "Unknown Member";
             const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) 
                 ? `<small class="text-muted-c">${data.senderEmail}</small>` 
@@ -645,7 +973,10 @@ async function loadAdminFeedback() {
                         <span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br>
                         <small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small>
                     </td>
-                    <td class="small">${snippet}</td>
+                    <td class="small">
+                        ${snippet}
+                        <div class="mt-1">${generateAttachmentBadges(data.attachments)}</div>
+                    </td>
                     <td>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
                     </td>
@@ -769,6 +1100,7 @@ async function loadMemberInbox(userEmail) {
                         <small class="text-muted-c">From: ${item.senderName || "Member"} • ${dateStr}</small>
                     </div>
                     <p class="small mb-0 text-muted-c">${item.message}</p>
+                    ${generateAttachmentBadges(item.attachments)}
                 </div>`;
         });
     } catch (error) {
