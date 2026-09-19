@@ -6,7 +6,7 @@
  */
 
 // ----------------------------------------------------------------------------
-// 1. FIREBASE INIT
+// 1. FIREBASE INIT & IMPORTS
 // ----------------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
 import {
@@ -28,6 +28,12 @@ import {
     updateDoc,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+import {
+    getStorage,
+    ref,
+    uploadBytes,
+    getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-storage.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
@@ -41,9 +47,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // ----------------------------------------------------------------------------
-// 2. THEME TOGGLE (persisted, applied on every page)
+// 2. THEME TOGGLE
 // ----------------------------------------------------------------------------
 function setThemeIcon(theme) {
     const icon = document.getElementById("themeIcon");
@@ -261,7 +268,6 @@ function initAuth() {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const fullName = document.getElementById("signUpName").value.trim();
                 
-                // Save public profile to Firestore for admin visibility
                 await setDoc(doc(db, "users", userCredential.user.uid), {
                     name: fullName,
                     email: email,
@@ -384,12 +390,11 @@ function initRepertoireBanner() {
 // ----------------------------------------------------------------------------
 async function initAdminDashboard() {
     const adminContent = document.getElementById("adminContent");
-    if (!adminContent) return; // Exit if not on admin.html
+    if (!adminContent) return; 
 
     const accessMsg = document.getElementById("accessDeniedMsg");
     const userRole = sessionStorage.getItem("kcpo_role");
 
-    // Enforce Admin-only access
     if (userRole !== "admin") {
         if (accessMsg) {
             accessMsg.innerHTML = `<h3 class='text-danger'>Access Restricted</h3><p class='text-muted-c'>You do not have administrative privileges.</p>`;
@@ -398,7 +403,6 @@ async function initAdminDashboard() {
         return;
     }
 
-    // Grant access
     if (accessMsg) accessMsg.classList.add("d-none");
     adminContent.classList.remove("d-none");
 
@@ -413,10 +417,10 @@ async function loadAdminUsers() {
 
     try {
         const querySnapshot = await getDocs(collection(db, "users"));
-        userTable.innerHTML = ""; // Clear loading state
+        userTable.innerHTML = ""; 
 
         if (querySnapshot.empty) {
-            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No members found. (Existing users must re-register to appear here).</td></tr>`;
+            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No members found.</td></tr>`;
             return;
         }
 
@@ -424,7 +428,6 @@ async function loadAdminUsers() {
             const userData = documentSnapshot.data();
             const userId = documentSnapshot.id;
             
-            // Prevent admins from deleting core admins
             const isCoreAdmin = ADMIN_EMAILS.includes(userData.email.toLowerCase());
             
             const actionButtons = isCoreAdmin ? 
@@ -452,7 +455,7 @@ window.promoteUser = async function(userId) {
     try {
         await updateDoc(doc(db, "users", userId), { role: "admin" });
         alert("User promoted successfully.");
-        loadAdminUsers(); // Refresh table
+        loadAdminUsers(); 
     } catch (error) {
         console.error("Error promoting user:", error);
         alert("Failed to promote user.");
@@ -464,7 +467,7 @@ window.deleteUserRecord = async function(userId) {
     try {
         await deleteDoc(doc(db, "users", userId));
         alert("User profile deleted.");
-        loadAdminUsers(); // Refresh table
+        loadAdminUsers(); 
     } catch (error) {
         console.error("Error deleting user:", error);
         alert("Failed to delete user profile.");
@@ -474,8 +477,156 @@ window.deleteUserRecord = async function(userId) {
 async function loadAdminFeedback() {
     const feedbackTable = document.getElementById("adminFeedbackTableBody");
     if (!feedbackTable) return;
-    
     feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c">No feedback records found.</td></tr>`;
+}
+
+// ----------------------------------------------------------------------------
+// 9. MEMBER DASHBOARD LOGIC (member.html)
+// ----------------------------------------------------------------------------
+async function initMemberDashboard() {
+    const memberContent = document.getElementById("memberContent");
+    if (!memberContent) return;
+
+    const accessDeniedMsg = document.getElementById("memberAccessDenied");
+
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            if (accessDeniedMsg) accessDeniedMsg.classList.add("d-none");
+            memberContent.classList.remove("d-none");
+
+            await loadAnnouncements();
+            await loadMemberInbox(user.email);
+            setupScoreUpload(user);
+        } else {
+            memberContent.classList.add("d-none");
+            if (accessDeniedMsg) accessDeniedMsg.classList.remove("d-none");
+        }
+    });
+}
+
+async function loadAnnouncements() {
+    const feed = document.getElementById("announcementsFeed");
+    if (!feed) return;
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "announcements"));
+        if (querySnapshot.empty) {
+            feed.innerHTML = `
+                <div class="alert kcpo-card border-line text-muted-c small p-3">
+                    No active announcements at this time.
+                </div>`;
+            return;
+        }
+
+        feed.innerHTML = "";
+        querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            feed.innerHTML += `
+                <div class="card kcpo-card p-3 mb-2">
+                    <h6 class="accent-gold mb-1">${data.title || "Announcement"}</h6>
+                    <p class="small text-muted-c mb-1">${data.message}</p>
+                    <small class="text-faint-c" style="font-size: 0.75rem;">
+                        Posted by ${data.author || "Admin"}
+                    </small>
+                </div>`;
+        });
+    } catch (error) {
+        console.error("Error loading announcements:", error);
+    }
+}
+
+async function loadMemberInbox(userEmail) {
+    const inboxFeed = document.getElementById("memberInboxFeed");
+    if (!inboxFeed) return;
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "feedback"));
+        inboxFeed.innerHTML = "";
+        let feedbackFound = false;
+
+        querySnapshot.forEach((docSnap) => {
+            const item = docSnap.data();
+            if (item.performerEmail && item.performerEmail.toLowerCase() === userEmail.toLowerCase()) {
+                feedbackFound = true;
+                inboxFeed.innerHTML += `
+                    <div class="card kcpo-card p-3 mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge badge-kcpo">${item.piece || "Repertoire Item"}</span>
+                            <small class="text-muted-c">From: ${item.reviewerName || "Peer Reviewer"}</small>
+                        </div>
+                        <p class="small mb-0 text-muted-c">${item.notes}</p>
+                    </div>`;
+            }
+        });
+
+        if (!feedbackFound) {
+            inboxFeed.innerHTML = `
+                <div class="card kcpo-card p-4 text-center">
+                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
+                    <p class="text-muted-c small mb-0">Your peer feedback from recent masterclasses will appear here.</p>
+                </div>`;
+        }
+    } catch (error) {
+        console.error("Error loading inbox:", error);
+    }
+}
+
+function setupScoreUpload(user) {
+    const uploadForm = document.getElementById("memberScoreUploadForm");
+    if (!uploadForm) return;
+
+    const statusBox = document.getElementById("uploadStatusBox");
+    const submitBtn = uploadForm.querySelector("button[type=submit]");
+
+    uploadForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const titleInput = document.getElementById("scoreTitle");
+        const fileInput = document.getElementById("pdfFile");
+        const file = fileInput.files[0];
+
+        if (!file || file.type !== "application/pdf") {
+            statusBox.className = "alert alert-danger small p-2 mt-3";
+            statusBox.textContent = "Please select a valid PDF file.";
+            statusBox.classList.remove("d-none");
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Uploading...`;
+        statusBox.classList.add("d-none");
+
+        try {
+            const storagePath = `scores/${Date.now()}_${file.name}`;
+            const fileRef = ref(storage, storagePath);
+            await uploadBytes(fileRef, file);
+
+            const downloadURL = await getDownloadURL(fileRef);
+
+            await addDoc(collection(db, "scores"), {
+                pieceTitle: titleInput.value.trim(),
+                pdfUrl: downloadURL,
+                fileName: file.name,
+                uploadedByEmail: user.email,
+                uploadedByUid: user.uid,
+                createdAt: serverTimestamp()
+            });
+
+            statusBox.className = "alert alert-success small p-2 mt-3";
+            statusBox.textContent = "Score uploaded successfully! It is now accessible to the group.";
+            statusBox.classList.remove("d-none");
+
+            uploadForm.reset();
+        } catch (error) {
+            console.error("Upload error:", error);
+            statusBox.className = "alert alert-danger small p-2 mt-3";
+            statusBox.textContent = "Upload failed: " + error.message;
+            statusBox.classList.remove("d-none");
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Upload to Repository";
+        }
+    });
 }
 
 // ----------------------------------------------------------------------------
@@ -489,4 +640,5 @@ document.addEventListener("DOMContentLoaded", () => {
     initRegistrationForm();
     initRepertoireBanner();
     initAdminDashboard();
+    initMemberDashboard();
 });
