@@ -449,28 +449,33 @@ async function loadChatMessages(scoreId) {
     const box = document.getElementById("chatMessages");
     box.innerHTML = "<small class='text-muted-c'>Loading feedback...</small>";
     
-    const q = query(collection(db, "score_feedback"), where("scoreId", "==", scoreId), orderBy("createdAt", "asc"));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-        box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>";
-        return;
+    try {
+        const q = query(collection(db, "score_feedback"), where("scoreId", "==", scoreId), orderBy("createdAt", "asc"));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>";
+            return;
+        }
+        
+        box.innerHTML = "";
+        const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
+        
+        snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            box.innerHTML += `
+                <div class="p-2 border-bottom border-line">
+                    <div class="d-flex justify-content-between">
+                        <strong class="small accent-gold">${data.senderName || data.senderEmail}</strong>
+                        ${isAdmin ? `<i class="bi bi-trash text-danger" style="cursor:pointer;" onclick="deleteFeedbackMsg('${docSnap.id}', '${scoreId}')"></i>` : ''}
+                    </div>
+                    <div class="small">${data.message}</div>
+                </div>`;
+        });
+    } catch (error) {
+        console.error("Error loading chat:", error);
+        box.innerHTML = `<div class="alert alert-danger small p-2 text-center mt-2">Failed to load feedback. Open your browser console (F12) and click the Firebase Index link to build the database index!</div>`;
     }
-    
-    box.innerHTML = "";
-    const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
-    
-    snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        box.innerHTML += `
-            <div class="p-2 border-bottom border-line">
-                <div class="d-flex justify-content-between">
-                    <strong class="small accent-gold">${data.senderName || data.senderEmail}</strong>
-                    ${isAdmin ? `<i class="bi bi-trash text-danger" style="cursor:pointer;" onclick="deleteFeedbackMsg('${docSnap.id}', '${scoreId}')"></i>` : ''}
-                </div>
-                <div class="small">${data.message}</div>
-            </div>`;
-    });
 }
 
 window.deleteFeedbackMsg = async function(msgId, scoreId) {
