@@ -629,7 +629,13 @@ function renderPdfPage(num) {
         const baseViewport = page.getViewport({ scale: 1.0 });
         
         const container = document.getElementById('pdfContainer');
-        const availableWidth = container ? container.clientWidth - 40 : 800; 
+        // clientWidth can read as 0 (or a stale value) if this runs before the
+        // modal has finished its show transition/layout — fall back to the
+        // viewport width in that case so we never compute a fit scale off a
+        // bogus container size (this was the source of the "starts zoomed
+        // in on phones" bug).
+        const measuredWidth = container ? container.clientWidth : 0;
+        const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
         
         // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
@@ -708,14 +714,28 @@ window.openPdfAnnotator = async function(pdfUrl) {
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
     setPdfTool('none');
     
-    const annotatorModal = new bootstrap.Modal(document.getElementById('annotatorModal'));
+    const modalEl = document.getElementById('annotatorModal');
+    const annotatorModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+    // Bootstrap's modal transition isn't necessarily finished the instant
+    // show() returns. If the PDF library/file load quickly (e.g. cached),
+    // renderPdfPage() used to run mid-transition and measure the container
+    // before it had its final on-screen size — usually reading 0 or a stale
+    // width, which threw the "fit to screen" math off and made the page
+    // render hugely oversized on first open (mostly visible on phones,
+    // since desktop containers are wide enough that the miscalculation was
+    // less noticeable). Waiting for "shown.bs.modal" guarantees the layout
+    // is settled before we ever measure it.
+    const modalShown = new Promise(resolve => {
+        modalEl.addEventListener('shown.bs.modal', resolve, { once: true });
+    });
     annotatorModal.show();
-    
+
     pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
     pdfCtx.fillText("Loading PDF Engine...", 10, 50);
-    
+
     try {
-        const pdfjs = await loadPDFJSLibrary();
+        const [pdfjs] = await Promise.all([loadPDFJSLibrary(), modalShown]);
         const loadingTask = pdfjs.getDocument(pdfUrl);
         pdfDoc = await loadingTask.promise;
         renderPdfPage(pageNum);
