@@ -221,8 +221,7 @@ function initAuth() {
     const navBtn = document.getElementById("navAuthBtn");
 
     onAuthStateChanged(auth, async (user) => {
-        // We no longer abort the entire auth check if navBtn is missing.
-        // This ensures backend auth completes seamlessly on all pages.
+        if (!navBtn) return;
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -243,33 +242,28 @@ function initAuth() {
             sessionStorage.setItem("kcpo_name", finalName);
 
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-            sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
             
-            // Only attempt to manipulate the DOM button if it exists on this specific page
-            if (navBtn) {
-                navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
-                navBtn.className = "btn btn-gold btn-sm px-3";
-                navBtn.removeAttribute("data-bs-toggle");
-                navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
+            navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
+            navBtn.className = "btn btn-gold btn-sm px-3";
+            navBtn.removeAttribute("data-bs-toggle");
+            navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
 
-                const li = document.createElement("li");
-                li.className = "nav-item ms-lg-2 my-2 my-lg-0";
-                li.id = "dynamicLogoutBtn";
-                li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
-                navBtn.parentElement.parentElement.appendChild(li);
-            }
+            const li = document.createElement("li");
+            li.className = "nav-item ms-lg-2 my-2 my-lg-0";
+            li.id = "dynamicLogoutBtn";
+            li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
+            navBtn.parentElement.parentElement.appendChild(li);
 
+            sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
         } else {
-            if (navBtn) {
-                navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
-                navBtn.className = "btn btn-outline-gold btn-sm px-3";
-                navBtn.setAttribute("data-bs-toggle", "modal");
-                navBtn.setAttribute("data-bs-target", "#authModal");
-                navBtn.onclick = null;
-            }
+            navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
+            navBtn.className = "btn btn-outline-gold btn-sm px-3";
+            navBtn.setAttribute("data-bs-toggle", "modal");
+            navBtn.setAttribute("data-bs-target", "#authModal");
+            navBtn.onclick = null;
 
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
@@ -578,7 +572,7 @@ function startDrawing(e) {
     } else if (currentTool === 'highlighter') {
         activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 16; 
+        activeCtx.lineWidth = 12; 
         activeCtx.globalAlpha = 0.3; 
     }
 }
@@ -1215,7 +1209,7 @@ async function loadRepertoireForMonth(targetMonth) {
         list.innerHTML = "";
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
-        const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+        const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
         
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1280,7 +1274,9 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     
     adminControls.innerHTML = ""; statusMsg.textContent = ""; 
     
-    if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
+    const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+    
+    if (isLocked && !isAdmin) {
         input.disabled = true; submitBtn.disabled = true; if(annotateBtn) annotateBtn.disabled = true;
         statusMsg.className = "small mt-2 text-center text-danger";
         statusMsg.textContent = "This feedback session has been locked by an admin.";
@@ -1289,7 +1285,7 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
         statusMsg.className = "small mt-2 text-center text-muted-c";
         statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
         
-        if (sessionStorage.getItem("kcpo_role") === "admin") {
+        if (isAdmin) {
             adminControls.innerHTML = `<button class="btn btn-sm ${isLocked ? 'btn-success' : 'btn-warning'}" onclick="toggleChatLock('${scoreId}', ${!isLocked})">${isLocked ? 'Unlock Chat' : 'Lock Chat'}</button>`;
         }
     }
@@ -1313,7 +1309,8 @@ async function loadChatMessages(scoreId) {
         if (snapshot.empty) { box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>"; return; }
         
         box.innerHTML = "";
-        const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
+        const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+        
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
             box.innerHTML += `
@@ -1541,6 +1538,26 @@ async function loadMemberInbox(user) {
             }
         });
     } catch (error) { inboxFeed.innerHTML = "<div class='text-danger'>Failed to load inbox.</div>"; }
+}
+
+async function initAdminDashboard() {
+    const adminContent = document.getElementById("adminContent");
+    if (!adminContent) return;
+
+    const accessMsg = document.getElementById("accessDeniedMsg");
+    
+    onAuthStateChanged(auth, async (user) => {
+        if (user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+            if (accessMsg) accessMsg.classList.add("d-none");
+            adminContent.classList.remove("d-none");
+            await loadAdminUsers();
+            await loadAdminFeedback();
+            initAdminBroadcasts();
+        } else {
+            adminContent.classList.add("d-none");
+            if (accessMsg) accessMsg.classList.remove("d-none");
+        }
+    });
 }
 
 async function initMemberDashboard() {
