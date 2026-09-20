@@ -49,8 +49,9 @@ const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
 
-// Unified Cloudinary Endpoint
+// Cloudinary Endpoints (Dual routing to prevent 404 RAW bugs)
 const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/auto/upload"; 
+const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
 // EmailJS Credentials
@@ -319,18 +320,22 @@ function initAuth() {
 // ----------------------------------------------------------------------------
 let currentGallery = [];
 let currentImageIndex = 0;
+let imgViewerScale = 1.0;
 
 const IMAGE_VIEWER_HTML = `
 <div class="modal fade" id="imageViewerModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content bg-transparent border-0 position-relative">
-            <div class="modal-header border-0 pb-0 justify-content-end">
-                <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;"><i class="bi bi-x-lg text-light"></i></button>
+            <div class="modal-header border-0 pb-0 justify-content-end gap-2">
+                <button type="button" class="btn btn-dark rounded-circle" onclick="zoomImageViewer(0.1)" style="opacity: 0.8;" title="Zoom In"><i class="bi bi-zoom-in text-light"></i></button>
+                <button type="button" class="btn btn-dark rounded-circle" onclick="zoomImageViewer(-0.1)" style="opacity: 0.8;" title="Zoom Out"><i class="bi bi-zoom-out text-light"></i></button>
+                <button type="button" class="btn btn-dark rounded-circle" onclick="downloadViewerImage()" style="opacity: 0.8;" title="Download"><i class="bi bi-download text-light"></i></button>
+                <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;" title="Close"><i class="bi bi-x-lg text-light"></i></button>
             </div>
-            <div class="modal-body text-center p-0 mt-2 position-relative">
-                <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-absolute top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
-                <img id="viewerImageTarget" src="" class="img-fluid rounded" style="max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Annotated Score">
-                <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-absolute top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
+            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh;">
+                <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-fixed top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
+                <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: transform 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
+                <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-fixed top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
             </div>
         </div>
     </div>
@@ -356,10 +361,36 @@ function injectImageViewer() {
     }
 }
 
+window.zoomImageViewer = function(delta) {
+    imgViewerScale += delta;
+    if (imgViewerScale < 0.5) imgViewerScale = 0.5;
+    if (imgViewerScale > 4.0) imgViewerScale = 4.0;
+    document.getElementById('viewerImageTarget').style.transform = `scale(${imgViewerScale})`;
+};
+
+window.downloadViewerImage = async function() {
+    const url = currentGallery[currentImageIndex];
+    if (!url) return;
+    try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `kcpo_media_${Date.now()}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (err) {
+        console.error("Download failed", err);
+    }
+};
+
 window.updateViewerImage = function() {
     if (!currentGallery || currentGallery.length === 0) return;
     
+    imgViewerScale = 1.0;
     const targetImg = document.getElementById('viewerImageTarget');
+    targetImg.style.transform = `scale(1.0)`;
     targetImg.src = currentGallery[currentImageIndex];
     
     document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
@@ -384,20 +415,26 @@ const PDF_MODAL_HTML = `
                 <h5 class="modal-title fs-6 accent-gold"><i class="bi bi-pen"></i> Score Editor</h5>
                 <div class="ms-auto d-flex gap-2 align-items-center">
                     <span id="pdfPageIndicator" class="small me-2 text-muted-c">Page 1</span>
-                    <button class="btn btn-sm btn-outline-secondary" id="btnPdfPrev"><i class="bi bi-chevron-left"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" id="btnPdfNext"><i class="bi bi-chevron-right"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPdfPrev"><i class="bi bi-chevron-left"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPdfNext"><i class="bi bi-chevron-right"></i></button>
                     <div class="vr mx-1 bg-secondary"></div>
-                    <button class="btn btn-sm btn-success" id="btnPdfDone">Done <span id="pdfSpinner" class="spinner-border spinner-border-sm d-none"></span></button>
-                    <button class="btn btn-sm btn-outline-light" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="zoomPdf(-0.1)" title="Zoom Out"><i class="bi bi-zoom-out"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="zoomPdf(0.1)" title="Zoom In"><i class="bi bi-zoom-in"></i></button>
+                    <div class="vr mx-1 bg-secondary"></div>
+                    <button type="button" class="btn btn-sm btn-success" id="btnPdfDone">Done <span id="pdfSpinner" class="spinner-border spinner-border-sm d-none"></span></button>
+                    <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
                 </div>
             </div>
-            <div class="bg-secondary text-center p-2 d-flex justify-content-center gap-3 border-bottom border-dark">
-                <button class="btn btn-sm btn-outline-light active" id="toolMove" onclick="setPdfTool('none')"><i class="bi bi-arrows-move"></i> Zoom / Move</button>
-                <button class="btn btn-sm btn-outline-danger" id="toolPen" onclick="setPdfTool('pen')"><i class="bi bi-pen"></i> Red Pen</button>
-                <button class="btn btn-sm btn-outline-warning" id="toolHighlight" onclick="setPdfTool('highlighter')"><i class="bi bi-marker"></i> Highlighter</button>
+            <div class="bg-secondary text-center p-2 d-flex justify-content-center gap-3 border-bottom border-dark align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-light active" id="toolMove" onclick="setPdfTool('none')"><i class="bi bi-arrows-move"></i> Move</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="toolPen" onclick="setPdfTool('pen')"><i class="bi bi-pen"></i> Pen</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="toolHighlight" onclick="setPdfTool('highlighter')"><i class="bi bi-marker"></i> Highlighter</button>
+                <input type="color" id="pdfColorPicker" value="#ff0000" class="form-control form-control-color form-control-sm p-0 border-0" style="width: 25px; height: 25px; cursor: pointer;" title="Choose tool color">
+                <div class="vr bg-dark mx-1"></div>
+                <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
             <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
-                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform-origin: top center; transition: transform 0.2s ease;">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                     <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
                     <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
@@ -411,15 +448,19 @@ let pdfDoc = null;
 let pageNum = 1;
 let pageIsRendering = false;
 let pageNumIsPending = null;
-let pdfScale = 1.5;
+
+// Scale parameters
+let pdfRenderResolution = 1.5; // Fixed high-res underlying canvas render
+let pdfCssScale = 1.0;         // Visual CSS zoom level
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
 let isDrawing = false;
 let currentStroke = []; 
 
-let pageDrawings = {};
+let pageDrawings = {};     // Finalized state strings mapping
 let pagesEdited = new Set(); 
+let undoHistory = {};      // Array of state strings per page
 
 function injectPdfModal() {
     if (!document.getElementById("annotatorModal")) {
@@ -461,6 +502,13 @@ async function loadPDFJSLibrary() {
     });
 }
 
+window.zoomPdf = function(delta) {
+    pdfCssScale += delta;
+    if (pdfCssScale < 0.5) pdfCssScale = 0.5;
+    if (pdfCssScale > 3.0) pdfCssScale = 3.0;
+    document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
+};
+
 window.setPdfTool = function(tool) {
     currentTool = tool;
     
@@ -486,6 +534,7 @@ function startDrawing(e) {
     
     isDrawing = true;
     
+    // Calculate mouse coordinates taking CSS scale transforms into account
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
@@ -498,12 +547,14 @@ function startDrawing(e) {
     activeCtx.lineCap = 'round';
     activeCtx.lineJoin = 'round';
     
+    const activeColor = document.getElementById('pdfColorPicker').value || '#ff0000';
+    
     if (currentTool === 'pen') {
-        activeCtx.strokeStyle = '#ff0000';
+        activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 3;
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.strokeStyle = '#ff0000';
+        activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 24;
         activeCtx.globalAlpha = 0.3; 
     }
@@ -542,11 +593,39 @@ function stopDrawing() {
     drawCtx.drawImage(activeCanvas, 0, 0);
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
+    
+    // Save to Undo History
+    if (!undoHistory[pageNum]) undoHistory[pageNum] = [];
+    undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
+    
+    // Sync main drawing state
+    pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
 }
 
+window.undoPdfStroke = function() {
+    if (undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
+        undoHistory[pageNum].pop(); // Discard the current state
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        
+        if (undoHistory[pageNum].length > 0) {
+            // Restore previous state
+            const lastState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
+            const img = new Image();
+            img.onload = () => drawCtx.drawImage(img, 0, 0);
+            img.src = lastState;
+            pageDrawings[pageNum] = lastState;
+        } else {
+            // Reverted back to a clean page
+            delete pageDrawings[pageNum];
+            pagesEdited.delete(pageNum);
+        }
+    }
+};
+
 function saveCurrentPageDrawings() {
-    if (pagesEdited.has(pageNum)) {
-        pageDrawings[pageNum] = drawCanvas.toDataURL("image/png");
+    // Rely on stopDrawing synchronization, but ensure map is updated
+    if (pagesEdited.has(pageNum) && undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
+        pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
     }
 }
 
@@ -554,7 +633,7 @@ function renderPdfPage(num) {
     pageIsRendering = true;
     
     pdfDoc.getPage(num).then(page => {
-        const viewport = page.getViewport({ scale: pdfScale });
+        const viewport = page.getViewport({ scale: pdfRenderResolution });
         
         pdfCanvas.height = viewport.height;
         pdfCanvas.width = viewport.width;
@@ -621,7 +700,11 @@ window.openPdfAnnotator = async function(pdfUrl) {
     
     pageDrawings = {};
     pagesEdited.clear();
+    undoHistory = {};
     pageNum = 1;
+    pdfCssScale = 1.0;
+    
+    document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
     setPdfTool('none');
     
     const annotatorModal = new bootstrap.Modal(document.getElementById('annotatorModal'));
@@ -660,7 +743,7 @@ async function processAndSaveAnnotations() {
         
         for (let num of pagesEdited) {
             const page = await pdfDoc.getPage(num);
-            const viewport = page.getViewport({ scale: pdfScale });
+            const viewport = page.getViewport({ scale: pdfRenderResolution });
             
             const offScreenCanvas = document.createElement('canvas');
             offScreenCanvas.width = viewport.width;
@@ -682,7 +765,8 @@ async function processAndSaveAnnotations() {
             formData.append("file", mergedDataUrl);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { 
+            // Route strictly to the Image endpoint so drawn canvases aren't tagged as raw text
+            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { 
                 method: "POST", 
                 body: formData 
             });
@@ -690,7 +774,7 @@ async function processAndSaveAnnotations() {
             const cloudinaryData = await cloudinaryRes.json();
             
             if (!cloudinaryRes.ok) {
-                throw new Error(cloudinaryData.error?.message || "Cloudinary annotation upload failed");
+                throw new Error(cloudinaryData.error?.message || "Cloudinary annotation upload failed.");
             }
             
             window.pendingAttachments.push({ 
@@ -751,14 +835,12 @@ function generateMediaBadges(attachmentsArray) {
     
     let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
     
-    // Safety check to ensure we only push valid, defined URLs to the image gallery
     const imageGallery = attachmentsArray.filter(a => a.type === 'image' && a.url && a.url !== 'undefined').map(a => a.url);
     const encodedGallery = encodeURIComponent(JSON.stringify(imageGallery));
     
     let imgCounter = 0;
     
     attachmentsArray.forEach((media) => {
-        // Prevent 404 links from broken uploads from rendering at all
         if (!media.url || media.url === 'undefined') return;
         
         if (media.type === 'image') {
