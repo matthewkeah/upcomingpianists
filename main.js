@@ -101,7 +101,7 @@ function markActiveNavLink() {
 function populateDynamicMonths() {
     const registerDropdown = document.getElementById("sessionMonth");
     const masterclassDropdown = document.getElementById("repertoireMonthSelect");
-    const memberUploadDropdown = document.getElementById("memberSessionMonth"); // New Target
+    const memberUploadDropdown = document.getElementById("memberSessionMonth");
     
     if (!registerDropdown && !masterclassDropdown && !memberUploadDropdown) return;
 
@@ -133,7 +133,6 @@ function populateDynamicMonths() {
         });
     }
 
-    // Populate the new member dashboard dropdown
     if (memberUploadDropdown) {
         upcomingMonths.forEach(monthStr => {
             const opt = document.createElement("option");
@@ -143,17 +142,6 @@ function populateDynamicMonths() {
         });
     }
 }
-
-    if (masterclassDropdown) {
-        upcomingMonths.forEach((monthStr, index) => {
-            const opt = document.createElement("option");
-            opt.value = monthStr;
-            opt.textContent = monthStr;
-            if (index === 0) opt.selected = true; 
-            masterclassDropdown.appendChild(opt);
-        });
-    }
-
 
 // ----------------------------------------------------------------------------
 // AUTHENTICATION & ADMIN ENFORCEMENT
@@ -907,10 +895,8 @@ async function loadAdminDirectory() {
 async function initAdminBroadcasts() {
     const form = document.getElementById("adminBroadcastForm");
     
-    // Stop execution if the form doesn't exist OR if it already has a listener
     if (!form || form.dataset.initialized) return; 
     
-    // Set the flag so future auth refreshes don't attach duplicate listeners
     form.dataset.initialized = "true";
     
     await loadAdminDirectory();
@@ -1442,7 +1428,6 @@ async function loadMemberInbox(user) {
         const feedbackQuery = query(collection(db, "score_feedback"), where("performerEmail", "==", user.email));
         const feedbackSnap = await getDocs(feedbackQuery);
         
-        // Fix: Split the communications query to perfectly satisfy the Firestore security rules
         const broadcastQuery = query(collection(db, "communications"), where("type", "==", "broadcast"));
         const broadcastSnap = await getDocs(broadcastQuery);
 
@@ -1460,7 +1445,6 @@ async function loadMemberInbox(user) {
         });
 
         dmSnap.forEach(doc => {
-            // Prevent duplicate entries if a DM accidentally shares a tag
             if (doc.data().type !== "broadcast") {
                 messages.push({ ...doc.data(), source: 'comm' });
             }
@@ -1537,7 +1521,7 @@ async function initMemberDashboard() {
                     e.preventDefault();
                     
                     const titleInput = document.getElementById("scoreTitle");
-                    const monthInput = document.getElementById("memberSessionMonth"); // Target Month
+                    const monthInput = document.getElementById("memberSessionMonth");
                     const fileInput = document.getElementById("pdfFile");
                     const statusBox = document.getElementById("uploadStatusBox");
                     const submitBtn = uploadForm.querySelector("button[type=submit]");
@@ -1564,10 +1548,10 @@ async function initMemberDashboard() {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url, 
                             fileName: file.name,
-                            sessionMonth: monthInput.value, // Saves the target month
-                            uploadedByEmail: user.email,    // Automated from session
-                            uploadedByUid: user.uid,        // Automated from session
-                            uploaderName: sessionStorage.getItem("kcpo_name") || "Member", // Automated from session
+                            sessionMonth: monthInput.value,
+                            uploadedByEmail: user.email, 
+                            uploadedByUid: user.uid,
+                            uploaderName: sessionStorage.getItem("kcpo_name") || "Member",
                             createdAt: serverTimestamp()
                         });
 
