@@ -449,18 +449,17 @@ let pageNum = 1;
 let pageIsRendering = false;
 let pageNumIsPending = null;
 
-// Scale parameters
-let pdfRenderResolution = 1.5; // Fixed high-res underlying canvas render
-let pdfCssScale = 1.0;         // Visual CSS zoom level
+let pdfRenderResolution = 1.5; 
+let pdfCssScale = 1.0;         
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
 let isDrawing = false;
 let currentStroke = []; 
 
-let pageDrawings = {};     // Finalized state strings mapping
+let pageDrawings = {};     
 let pagesEdited = new Set(); 
-let undoHistory = {};      // Array of state strings per page
+let undoHistory = {};      
 
 function injectPdfModal() {
     if (!document.getElementById("annotatorModal")) {
@@ -504,7 +503,7 @@ async function loadPDFJSLibrary() {
 
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.5) pdfCssScale = 0.5;
+    if (pdfCssScale < 0.2) pdfCssScale = 0.2;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
 };
@@ -534,7 +533,6 @@ function startDrawing(e) {
     
     isDrawing = true;
     
-    // Calculate mouse coordinates taking CSS scale transforms into account
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
@@ -594,28 +592,24 @@ function stopDrawing() {
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
     
-    // Save to Undo History
     if (!undoHistory[pageNum]) undoHistory[pageNum] = [];
     undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
     
-    // Sync main drawing state
     pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
 }
 
 window.undoPdfStroke = function() {
     if (undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
-        undoHistory[pageNum].pop(); // Discard the current state
+        undoHistory[pageNum].pop(); 
         drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
         
         if (undoHistory[pageNum].length > 0) {
-            // Restore previous state
             const lastState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
             const img = new Image();
             img.onload = () => drawCtx.drawImage(img, 0, 0);
             img.src = lastState;
             pageDrawings[pageNum] = lastState;
         } else {
-            // Reverted back to a clean page
             delete pageDrawings[pageNum];
             pagesEdited.delete(pageNum);
         }
@@ -623,7 +617,6 @@ window.undoPdfStroke = function() {
 };
 
 function saveCurrentPageDrawings() {
-    // Rely on stopDrawing synchronization, but ensure map is updated
     if (pagesEdited.has(pageNum) && undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
         pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
     }
@@ -633,7 +626,16 @@ function renderPdfPage(num) {
     pageIsRendering = true;
     
     pdfDoc.getPage(num).then(page => {
-        const viewport = page.getViewport({ scale: pdfRenderResolution });
+        // Base viewport render at scale 1.0 to measure native document dimensions
+        const baseViewport = page.getViewport({ scale: 1.0 });
+        
+        // Dynamically compute fit-to-screen scale based on available container width
+        const container = document.getElementById('pdfContainer');
+        const availableWidth = container ? container.clientWidth - 40 : 800; // 40px buffer
+        const fitScale = Math.min(availableWidth / baseViewport.width, 1.2); 
+        
+        // Apply fitScale to the active render resolution
+        const viewport = page.getViewport({ scale: fitScale });
         
         pdfCanvas.height = viewport.height;
         pdfCanvas.width = viewport.width;
@@ -765,7 +767,6 @@ async function processAndSaveAnnotations() {
             formData.append("file", mergedDataUrl);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            // Route strictly to the Image endpoint so drawn canvases aren't tagged as raw text
             const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { 
                 method: "POST", 
                 body: formData 
@@ -774,7 +775,7 @@ async function processAndSaveAnnotations() {
             const cloudinaryData = await cloudinaryRes.json();
             
             if (!cloudinaryRes.ok) {
-                throw new Error(cloudinaryData.error?.message || "Cloudinary annotation upload failed.");
+                throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
             }
             
             window.pendingAttachments.push({ 
