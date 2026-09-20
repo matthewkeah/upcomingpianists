@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * KCPO PORTAL — APP ENGINE (WITH PDF ANNOTATION & IMAGE VIEWER)
+ * KCPO PORTAL — APP ENGINE
  * Loaded as a module on every page: <script type="module" src="main.js"></script>
  * ============================================================================
  */
@@ -48,11 +48,24 @@ const db = getFirestore(app);
 const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
-const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
+
+// Cloudinary Endpoints
+const CLOUDINARY_RAW_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
 const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
+const CLOUDINARY_VIDEO_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/video/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
+// EmailJS Credentials
+const EMAILJS_PUBLIC_KEY = "knA4KtHIfdGjzsSA0";
+const EMAILJS_SERVICE_ID = "service_f3at2ti";
+const EMAILJS_TEMPLATE_ID = "template_d9oibsw";
+
 window.pendingAttachments = []; 
+let globalUserDirectory = [];
+
+if (typeof emailjs !== 'undefined') {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+}
 
 // ----------------------------------------------------------------------------
 // THEME & NAV STATE
@@ -61,20 +74,27 @@ function initTheme() {
     const stored = localStorage.getItem("kcpo-theme") || "dark";
     document.documentElement.setAttribute("data-bs-theme", stored);
     const icon = document.getElementById("themeIcon");
-    if (icon) icon.className = stored === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+    if (icon) {
+        icon.className = stored === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+    }
 
-    document.getElementById("themeToggle")?.addEventListener("click", () => {
-        const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
-        document.documentElement.setAttribute("data-bs-theme", next);
-        localStorage.setItem("kcpo-theme", next);
-        if (icon) icon.className = next === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
-    });
+    const themeToggleBtn = document.getElementById("themeToggle");
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener("click", () => {
+            const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+            document.documentElement.setAttribute("data-bs-theme", next);
+            localStorage.setItem("kcpo-theme", next);
+            if (icon) icon.className = next === "dark" ? "bi bi-sun-fill" : "bi bi-moon-stars-fill";
+        });
+    }
 }
 
 function markActiveNavLink() {
     const currentPage = window.location.pathname.split("/").pop() || "index.html";
     document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
-        if (link.getAttribute("href") === currentPage) link.classList.add("active");
+        if (link.getAttribute("href") === currentPage) {
+            link.classList.add("active");
+        }
     });
 }
 
@@ -153,7 +173,9 @@ const AUTH_MODAL_HTML = `
 </div>`;
 
 function injectAuthModal() {
-    if (!document.getElementById("authModal")) document.body.insertAdjacentHTML("beforeend", AUTH_MODAL_HTML);
+    if (!document.getElementById("authModal")) {
+        document.body.insertAdjacentHTML("beforeend", AUTH_MODAL_HTML);
+    }
 }
 
 window.logoutUser = async function() {
@@ -164,12 +186,16 @@ window.logoutUser = async function() {
 
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
-    if (box) { box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; box.textContent = msg; }
+    if (box) { 
+        box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
+        box.textContent = msg; 
+    }
 }
 
 async function ensureAdminRole(user) {
     if (!user || !user.email) return;
     const emailLower = user.email.toLowerCase();
+    
     if (ADMIN_EMAILS.includes(emailLower)) {
         try {
             await setDoc(doc(db, "users", user.uid), {
@@ -189,7 +215,9 @@ function initAuth() {
 
     onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
-        document.getElementById("dynamicLogoutBtn")?.remove();
+        
+        const existingLogout = document.getElementById("dynamicLogoutBtn");
+        if (existingLogout) existingLogout.remove();
 
         if (user) {
             await ensureAdminRole(user);
@@ -200,12 +228,15 @@ function initAuth() {
                 if (userDoc.exists() && userDoc.data().name) {
                     realName = userDoc.data().name;
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.error("Profile name fetch failed", err);
+            }
 
             const finalName = realName || user.email;
             sessionStorage.setItem("kcpo_name", finalName);
 
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+            
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
             navBtn.className = "btn btn-gold btn-sm px-3";
             navBtn.removeAttribute("data-bs-toggle");
@@ -218,51 +249,80 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
+            
+            const feed = document.getElementById("communicationsFeed");
+            if(feed) loadCommunicationsHub();
+
         } else {
             navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
             navBtn.className = "btn btn-outline-gold btn-sm px-3";
             navBtn.setAttribute("data-bs-toggle", "modal");
             navBtn.setAttribute("data-bs-target", "#authModal");
             navBtn.onclick = null;
+
+            const feed = document.getElementById("communicationsFeed");
+            if(feed) loadCommunicationsHub();
         }
     });
 
-    document.getElementById("signInForm")?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        try {
-            await signInWithEmailAndPassword(auth, document.getElementById("signInEmail").value, document.getElementById("signInPassword").value);
-            window.location.reload();
-        } catch (err) { showAuthAlert(err.message); }
-    });
+    const signInForm = document.getElementById("signInForm");
+    if (signInForm) {
+        signInForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            try {
+                const email = document.getElementById("signInEmail").value;
+                const password = document.getElementById("signInPassword").value;
+                await signInWithEmailAndPassword(auth, email, password);
+                window.location.reload();
+            } catch (err) { 
+                showAuthAlert(err.message); 
+            }
+        });
+    }
 
-    document.getElementById("signUpForm")?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        try {
-            const email = document.getElementById("signUpEmail").value;
-            const cred = await createUserWithEmailAndPassword(auth, email, document.getElementById("signUpPassword").value);
-            await setDoc(doc(db, "users", cred.user.uid), {
-                name: document.getElementById("signUpName").value,
-                email: email,
-                role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
-                createdAt: serverTimestamp()
-            });
-            window.location.reload();
-        } catch (err) { showAuthAlert(err.message); }
-    });
+    const signUpForm = document.getElementById("signUpForm");
+    if (signUpForm) {
+        signUpForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            try {
+                const email = document.getElementById("signUpEmail").value;
+                const password = document.getElementById("signUpPassword").value;
+                const name = document.getElementById("signUpName").value;
+                
+                const cred = await createUserWithEmailAndPassword(auth, email, password);
+                
+                await setDoc(doc(db, "users", cred.user.uid), {
+                    name: name,
+                    email: email,
+                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
+                    createdAt: serverTimestamp()
+                });
+                
+                window.location.reload();
+            } catch (err) { 
+                showAuthAlert(err.message); 
+            }
+        });
+    }
 }
 
 // ----------------------------------------------------------------------------
-// IN-APP IMAGE VIEWER (LIGHTBOX)
+// IN-APP IMAGE VIEWER (LIGHTBOX) WITH GALLERY
 // ----------------------------------------------------------------------------
+let currentGallery = [];
+let currentImageIndex = 0;
+
 const IMAGE_VIEWER_HTML = `
 <div class="modal fade" id="imageViewerModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content bg-transparent border-0">
+        <div class="modal-content bg-transparent border-0 position-relative">
             <div class="modal-header border-0 pb-0 justify-content-end">
                 <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;"><i class="bi bi-x-lg text-light"></i></button>
             </div>
-            <div class="modal-body text-center p-0 mt-2">
+            <div class="modal-body text-center p-0 mt-2 position-relative">
+                <button id="btnViewerPrev" class="btn btn-dark rounded-circle position-absolute top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
                 <img id="viewerImageTarget" src="" class="img-fluid rounded" style="max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Annotated Score">
+                <button id="btnViewerNext" class="btn btn-dark rounded-circle position-absolute top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
             </div>
         </div>
     </div>
@@ -271,11 +331,37 @@ const IMAGE_VIEWER_HTML = `
 function injectImageViewer() {
     if (!document.getElementById("imageViewerModal")) {
         document.body.insertAdjacentHTML("beforeend", IMAGE_VIEWER_HTML);
+        
+        document.getElementById('btnViewerPrev').addEventListener('click', () => {
+            if (currentImageIndex > 0) {
+                currentImageIndex--;
+                updateViewerImage();
+            }
+        });
+        
+        document.getElementById('btnViewerNext').addEventListener('click', () => {
+            if (currentImageIndex < currentGallery.length - 1) {
+                currentImageIndex++;
+                updateViewerImage();
+            }
+        });
     }
 }
 
-window.openImageViewer = function(url) {
-    document.getElementById('viewerImageTarget').src = url;
+window.updateViewerImage = function() {
+    if (!currentGallery || currentGallery.length === 0) return;
+    
+    const targetImg = document.getElementById('viewerImageTarget');
+    targetImg.src = currentGallery[currentImageIndex];
+    
+    document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
+    document.getElementById('btnViewerNext').style.display = currentImageIndex < currentGallery.length - 1 ? 'block' : 'none';
+};
+
+window.openImageViewer = function(encodedUrls, startIndex) {
+    currentGallery = JSON.parse(decodeURIComponent(encodedUrls));
+    currentImageIndex = startIndex;
+    updateViewerImage();
     new bootstrap.Modal(document.getElementById('imageViewerModal')).show();
 };
 
@@ -313,11 +399,11 @@ const PDF_MODAL_HTML = `
     </div>
 </div>`;
 
-let pdfDoc = null,
-    pageNum = 1,
-    pageIsRendering = false,
-    pageNumIsPending = null,
-    pdfScale = 1.5;
+let pdfDoc = null;
+let pageNum = 1;
+let pageIsRendering = false;
+let pageNumIsPending = null;
+let pdfScale = 1.5;
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
@@ -352,13 +438,16 @@ function injectPdfModal() {
 
 async function loadPDFJSLibrary() {
     if (window.pdfjsLib) return window.pdfjsLib;
+    
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        
         script.onload = () => {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
             resolve(window.pdfjsLib);
         };
+        
         script.onerror = reject;
         document.head.appendChild(script);
     });
@@ -366,6 +455,7 @@ async function loadPDFJSLibrary() {
 
 window.setPdfTool = function(tool) {
     currentTool = tool;
+    
     document.getElementById('toolMove').classList.remove('active');
     document.getElementById('toolPen').classList.remove('active');
     document.getElementById('toolHighlight').classList.remove('active');
@@ -374,19 +464,24 @@ window.setPdfTool = function(tool) {
         document.getElementById('toolMove').classList.add('active');
         drawCanvas.style.pointerEvents = 'none'; 
     } else {
-        if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
-        if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
+        if (tool === 'pen') {
+            document.getElementById('toolPen').classList.add('active');
+        } else if (tool === 'highlighter') {
+            document.getElementById('toolHighlight').classList.add('active');
+        }
         drawCanvas.style.pointerEvents = 'auto'; 
     }
 }
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
+    
     isDrawing = true;
     
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
+    
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
@@ -408,13 +503,14 @@ function startDrawing(e) {
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    e.preventDefault(); 
     
+    e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
+    
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
@@ -423,16 +519,18 @@ function draw(e) {
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
+    
     for (let i = 1; i < currentStroke.length; i++) {
         activeCtx.lineTo(currentStroke[i].x, currentStroke[i].y);
     }
+    
     activeCtx.stroke();
 }
 
 function stopDrawing() { 
     if (!isDrawing) return;
-    isDrawing = false;
     
+    isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
@@ -449,6 +547,7 @@ function renderPdfPage(num) {
     
     pdfDoc.getPage(num).then(page => {
         const viewport = page.getViewport({ scale: pdfScale });
+        
         pdfCanvas.height = viewport.height;
         pdfCanvas.width = viewport.width;
         
@@ -458,7 +557,10 @@ function renderPdfPage(num) {
         activeCanvas.height = viewport.height;
         activeCanvas.width = viewport.width;
         
-        const renderContext = { canvasContext: pdfCtx, viewport: viewport };
+        const renderContext = {
+            canvasContext: pdfCtx,
+            viewport: viewport
+        };
         
         page.render(renderContext).promise.then(() => {
             pageIsRendering = false;
@@ -483,8 +585,11 @@ function renderPdfPage(num) {
 }
 
 function queueRenderPage(num) {
-    if (pageIsRendering) pageNumIsPending = num;
-    else renderPdfPage(num);
+    if (pageIsRendering) {
+        pageNumIsPending = num;
+    } else {
+        renderPdfPage(num);
+    }
 }
 
 function onPrevPage() {
@@ -503,6 +608,7 @@ function onNextPage() {
 
 window.openPdfAnnotator = async function(pdfUrl) {
     if (!pdfUrl) return alert("Score file not found.");
+    
     injectPdfModal();
     
     pageDrawings = {};
@@ -537,7 +643,9 @@ async function processAndSaveAnnotations() {
 
     const btn = document.getElementById('btnPdfDone');
     const spinner = document.getElementById('pdfSpinner');
-    btn.disabled = true; spinner.classList.remove('d-none');
+    
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
     
     try {
         window.pendingAttachments = [];
@@ -566,10 +674,17 @@ async function processAndSaveAnnotations() {
             formData.append("file", mergedDataUrl);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
+            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { 
+                method: "POST", 
+                body: formData 
+            });
+            
             const cloudinaryData = await cloudinaryRes.json();
             
-            window.pendingAttachments.push(cloudinaryData.secure_url);
+            window.pendingAttachments.push({ 
+                url: cloudinaryData.secure_url, 
+                type: 'image' 
+            });
         }
         
         const statusMsg = document.getElementById("chatStatusMsg");
@@ -584,12 +699,263 @@ async function processAndSaveAnnotations() {
         console.error("Failed to process annotations:", error);
         alert("Failed to save edits.");
     } finally {
-        btn.disabled = false; spinner.classList.add('d-none');
+        btn.disabled = false;
+        spinner.classList.add('d-none');
     }
 }
 
 // ----------------------------------------------------------------------------
-// ACTION PLAN (Registration Gatekeeper & Upload)
+// CLOUDINARY UPLOAD ROUTER (Supports Docs, Videos, Images)
+// ----------------------------------------------------------------------------
+async function uploadMediaArray(fileList) {
+    const uploadedData = [];
+    
+    for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        let endpoint = CLOUDINARY_RAW_URL; 
+        let fileType = 'raw';
+        
+        if (file.type.startsWith('image/')) { 
+            endpoint = CLOUDINARY_IMAGE_URL; 
+            fileType = 'image'; 
+        } else if (file.type.startsWith('video/')) { 
+            endpoint = CLOUDINARY_VIDEO_URL; 
+            fileType = 'video'; 
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", CLOUDINARY_PRESET);
+        
+        const res = await fetch(endpoint, { method: "POST", body: formData });
+        const data = await res.json();
+        
+        uploadedData.push({ 
+            url: data.secure_url, 
+            type: fileType, 
+            name: file.name 
+        });
+    }
+    
+    return uploadedData;
+}
+
+function generateMediaBadges(attachmentsArray) {
+    if (!attachmentsArray || attachmentsArray.length === 0) return '';
+    
+    let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
+    
+    const imageGallery = attachmentsArray.filter(a => a.type === 'image').map(a => a.url);
+    const encodedGallery = encodeURIComponent(JSON.stringify(imageGallery));
+    
+    let imgCounter = 0;
+    
+    attachmentsArray.forEach((media) => {
+        if (media.type === 'image') {
+            html += `<span onclick="openImageViewer('${encodedGallery}', ${imgCounter})" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Image</span>`;
+            imgCounter++;
+        } else if (media.type === 'video') {
+            html += `<a href="${media.url}" target="_blank" class="badge bg-warning text-dark text-decoration-none"><i class="bi bi-play-circle"></i> Video</a>`;
+        } else {
+            html += `<a href="${media.url}" target="_blank" class="badge bg-secondary text-light text-decoration-none"><i class="bi bi-file-earmark-pdf"></i> ${media.name ? media.name.substring(0,10) + '...' : 'Document'}</a>`;
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+// ----------------------------------------------------------------------------
+// COMMUNICATIONS HUB (BROADCASTS ONLY)
+// ----------------------------------------------------------------------------
+async function loadCommunicationsHub() {
+    const feed = document.getElementById("communicationsFeed");
+    if (!feed) return;
+    
+    feed.innerHTML = "<div class='text-center text-muted-c my-5'>Loading broadcasts...</div>";
+    
+    try {
+        const q = query(collection(db, "communications"), where("type", "==", "broadcast"));
+        const querySnapshot = await getDocs(q);
+        let posts = [];
+        
+        querySnapshot.forEach(docSnap => {
+            posts.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        
+        if (posts.length === 0) {
+            feed.innerHTML = "<div class='text-center text-muted-c my-5'>No public broadcasts found.</div>";
+            return;
+        }
+
+        posts.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+        
+        feed.innerHTML = "";
+        
+        posts.forEach(post => {
+            const dateStr = post.createdAt ? post.createdAt.toDate().toLocaleString() : "Recently";
+            const badgeHtml = `<span class="badge bg-gold text-dark ms-2">Broadcast</span>`;
+            
+            feed.innerHTML += `
+                <div class="card kcpo-card p-4 mb-4 border-secondary">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="mb-1 text-light">${post.title} ${badgeHtml}</h5>
+                            <small class="text-muted-c">From: KCPO Admin • ${dateStr}</small>
+                        </div>
+                    </div>
+                    <div class="text-light" style="white-space: pre-wrap;">${post.message}</div>
+                    ${generateMediaBadges(post.attachments)}
+                </div>
+            `;
+        });
+        
+    } catch (err) {
+        console.error("Failed to load hub:", err);
+        feed.innerHTML = "<div class='alert alert-danger'>Failed to load broadcasts. Please check your connection.</div>";
+    }
+}
+
+// ----------------------------------------------------------------------------
+// ADMIN DIRECTORY & COMPOSER LOGIC
+// ----------------------------------------------------------------------------
+window.setComposerTarget = function(uid, name, email) {
+    document.getElementById('broadcastTargetUid').value = uid;
+    document.getElementById('broadcastTargetEmail').value = email;
+    
+    if (uid === 'all') {
+        document.getElementById('composerTargetLabel').textContent = "Broadcasting to: All Members";
+        document.getElementById('composerPrivateBadge').classList.add('d-none');
+    } else {
+        document.getElementById('composerTargetLabel').textContent = `Direct Message: ${name}`;
+        document.getElementById('composerPrivateBadge').classList.remove('d-none');
+    }
+    
+    if (window.innerWidth < 992) {
+        document.getElementById('adminBroadcastForm').scrollIntoView({behavior: 'smooth'});
+    }
+}
+
+function filterDirectory() {
+    const searchInput = document.getElementById('adminMemberSearch');
+    if (!searchInput) return;
+    
+    const queryStr = searchInput.value.toLowerCase();
+    const list = document.getElementById('adminMemberList');
+    list.innerHTML = "";
+    
+    globalUserDirectory.filter(u => u.name.toLowerCase().includes(queryStr) || u.email.toLowerCase().includes(queryStr))
+    .forEach(u => {
+        list.innerHTML += `
+            <button class="list-group-item list-group-item-action bg-transparent border-secondary text-light py-3" 
+                    onclick="setComposerTarget('${u.id}', '${u.name.replace(/'/g, "\\'")}', '${u.email}')">
+                <strong>${u.name}</strong><br>
+                <small class="text-muted-c">${u.email}</small>
+            </button>`;
+    });
+}
+
+async function loadAdminDirectory() {
+    const list = document.getElementById("adminMemberList");
+    if (!list) return;
+    
+    try {
+        const snap = await getDocs(collection(db, "users"));
+        globalUserDirectory = [];
+        
+        snap.forEach(doc => {
+            const data = doc.data();
+            globalUserDirectory.push({ 
+                id: doc.id, 
+                name: data.name || "Unknown", 
+                email: data.email 
+            });
+        });
+        
+        globalUserDirectory.sort((a,b) => a.name.localeCompare(b.name));
+        filterDirectory();
+        
+        document.getElementById('adminMemberSearch').addEventListener('input', filterDirectory);
+        
+    } catch (err) { 
+        console.error("Failed to load directory", err); 
+    }
+}
+
+async function initAdminBroadcasts() {
+    const form = document.getElementById("adminBroadcastForm");
+    if (!form) return;
+    
+    await loadAdminDirectory();
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const targetUid = document.getElementById("broadcastTargetUid").value;
+        const targetEmail = document.getElementById("broadcastTargetEmail").value;
+        const title = document.getElementById("broadcastTitle").value.trim();
+        const msg = document.getElementById("broadcastMessage").value.trim();
+        const fileInput = document.getElementById("broadcastMedia");
+        
+        const btn = document.getElementById("btnSendBroadcast");
+        const status = document.getElementById("broadcastStatus");
+        
+        btn.disabled = true; 
+        btn.textContent = "Publishing & Sending Emails...";
+        status.classList.add("d-none");
+        
+        try {
+            let uploadedMedia = [];
+            if (fileInput.files.length > 0) {
+                uploadedMedia = await uploadMediaArray(fileInput.files);
+            }
+            
+            await addDoc(collection(db, "communications"), {
+                type: targetUid === "all" ? "broadcast" : "direct",
+                targetUid: targetUid,
+                targetEmail: targetEmail,
+                title: title,
+                message: msg,
+                attachments: uploadedMedia,
+                adminEmail: auth.currentUser.email,
+                createdAt: serverTimestamp()
+            });
+            
+            if (typeof emailjs !== 'undefined') {
+                let emailsToNotify = "";
+                
+                if (targetUid === "all") {
+                    emailsToNotify = globalUserDirectory.map(u => u.email).join(",");
+                } else {
+                    emailsToNotify = targetEmail;
+                }
+                
+                await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                    to_email: emailsToNotify, 
+                    subject: title,
+                    message: msg,
+                    admin_name: sessionStorage.getItem("kcpo_name") || "KCPO Admin"
+                });
+            }
+            
+            status.className = "alert alert-success mt-3 d-block small";
+            status.textContent = "Message published and email notifications sent successfully!";
+            
+            form.reset();
+            setComposerTarget('all', 'All Members', 'all');
+            
+        } catch (error) {
+            status.className = "alert alert-danger mt-3 d-block small";
+            status.textContent = "Error: " + error.message;
+        } finally {
+            btn.disabled = false; 
+            btn.textContent = "Publish & Send Email Notification";
+        }
+    });
+}
+
+// ----------------------------------------------------------------------------
+// REGISTRATION FORM
 // ----------------------------------------------------------------------------
 function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
@@ -606,7 +972,10 @@ function initRegistrationForm() {
             return;
         }
 
-        if (!form.checkValidity()) { form.classList.add("was-validated"); return; }
+        if (!form.checkValidity()) { 
+            form.classList.add("was-validated"); 
+            return; 
+        }
 
         const btn = form.querySelector("button[type=submit]");
         const status = document.getElementById("registrationStatus");
@@ -614,7 +983,8 @@ function initRegistrationForm() {
         const month = document.getElementById("sessionMonth").value;
         const title = document.getElementById("repertoire").value.trim();
 
-        btn.disabled = true; btn.textContent = "Uploading Score...";
+        btn.disabled = true; 
+        btn.textContent = "Uploading Score...";
         status.classList.add("d-none");
 
         try {
@@ -622,13 +992,14 @@ function initRegistrationForm() {
             formData.append("file", file);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
-            const cloudinaryData = await cloudinaryRes.json();
-            if (!cloudinaryRes.ok) throw new Error("Cloudinary upload failed.");
+            const res = await fetch(CLOUDINARY_RAW_URL, { method: "POST", body: formData });
+            const data = await res.json();
+            
+            if (!res.ok) throw new Error("Cloudinary upload failed.");
 
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
-                pdfUrl: cloudinaryData.secure_url,
+                pdfUrl: data.secure_url,
                 fileName: file.name,
                 sessionMonth: month,
                 uploadedByEmail: auth.currentUser.email,
@@ -639,12 +1010,15 @@ function initRegistrationForm() {
 
             status.className = "alert alert-success mt-3 d-block";
             status.textContent = "Slot secured and score uploaded successfully!";
-            form.reset(); form.classList.remove("was-validated");
+            form.reset(); 
+            form.classList.remove("was-validated");
+            
         } catch (err) {
             status.className = "alert alert-danger mt-3 d-block";
             status.textContent = err.message;
         } finally {
-            btn.disabled = false; btn.textContent = "Submit Registration";
+            btn.disabled = false; 
+            btn.textContent = "Submit Registration";
         }
     });
 }
@@ -721,6 +1095,7 @@ function initMasterclasses() {
 async function loadRepertoireForMonth(targetMonth) {
     const list = document.getElementById('repertoireList');
     if (!list) return;
+    
     list.innerHTML = `<div class="text-center text-muted-c w-100">Loading repertoire...</div>`;
 
     try {
@@ -795,6 +1170,7 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
         annotateBtn.innerHTML = '<i class="bi bi-pen"></i> Open Score to Annotate';
         chatForm.parentNode.insertBefore(annotateBtn, chatForm);
     }
+    
     if (annotateBtn) {
         annotateBtn.onclick = () => openPdfAnnotator(pdfUrl);
     }
@@ -810,13 +1186,17 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     statusMsg.textContent = ""; 
     
     if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
-        input.disabled = true; submitBtn.disabled = true;
+        input.disabled = true; 
+        submitBtn.disabled = true;
         if(annotateBtn) annotateBtn.disabled = true;
+        
         statusMsg.className = "small mt-2 text-center text-danger";
         statusMsg.textContent = "This feedback session has been locked by an admin.";
     } else {
-        input.disabled = !auth.currentUser; submitBtn.disabled = !auth.currentUser;
+        input.disabled = !auth.currentUser; 
+        submitBtn.disabled = !auth.currentUser;
         if(annotateBtn) annotateBtn.disabled = !auth.currentUser;
+        
         statusMsg.className = "small mt-2 text-center text-muted-c";
         statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
         
@@ -834,17 +1214,6 @@ window.toggleChatLock = async function(scoreId, lockState) {
     bootstrap.Modal.getInstance(document.getElementById('chatModal')).hide();
     document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change")); 
 };
-
-function generateAttachmentBadges(attachmentsArray) {
-    if (!attachmentsArray || attachmentsArray.length === 0) return '';
-    let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
-    attachmentsArray.forEach((url, index) => {
-        // Changed from an <a> tag to a styled <span> that triggers the modal
-        html += `<span onclick="openImageViewer('${url}')" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Edit ${index + 1}</span>`;
-    });
-    html += '</div>';
-    return html;
-}
 
 async function loadChatMessages(scoreId) {
     const box = document.getElementById("chatMessages");
@@ -871,12 +1240,12 @@ async function loadChatMessages(scoreId) {
                         ${isAdmin ? `<i class="bi bi-trash text-danger" style="cursor:pointer;" onclick="deleteFeedbackMsg('${docSnap.id}', '${scoreId}')"></i>` : ''}
                     </div>
                     <div class="small">${data.message}</div>
-                    ${generateAttachmentBadges(data.attachments)}
+                    ${generateMediaBadges(data.attachments)}
                 </div>`;
         });
     } catch (error) {
         console.error("Error loading chat:", error);
-        box.innerHTML = `<div class="alert alert-danger small p-2 text-center mt-2">Failed to load feedback. Open your browser console (F12) and click the Firebase Index link to build the database index!</div>`;
+        box.innerHTML = `<div class="alert alert-danger small p-2 text-center mt-2">Failed to load feedback.</div>`;
     }
 }
 
@@ -897,13 +1266,15 @@ async function initAdminDashboard() {
     
     onAuthStateChanged(auth, async (user) => {
         if (user && sessionStorage.getItem("kcpo_role") === "admin") {
-            if (accessMsg) accessMsg.classList.add("d-none");
+            accessMsg.classList.add("d-none");
             adminContent.classList.remove("d-none");
+            
             await loadAdminUsers();
             await loadAdminFeedback();
+            initAdminBroadcasts();
         } else {
             adminContent.classList.add("d-none");
-            if (accessMsg) accessMsg.classList.remove("d-none");
+            accessMsg.classList.remove("d-none");
         }
     });
 }
@@ -911,6 +1282,7 @@ async function initAdminDashboard() {
 async function loadAdminUsers() {
     const userTable = document.getElementById("adminUserTableBody");
     if (!userTable) return;
+    
     userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading member directory...</td></tr>`;
 
     try {
@@ -944,7 +1316,7 @@ async function loadAdminUsers() {
         });
     } catch (error) {
         console.error("Error fetching users:", error);
-        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory: ${error.message}</td></tr>`;
+        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory.</td></tr>`;
     }
 }
 
@@ -955,7 +1327,6 @@ window.promoteUser = async function(userId) {
         alert("Member successfully promoted to Administrator.");
         loadAdminUsers(); 
     } catch (error) {
-        console.error("Error promoting user:", error);
         alert("Failed to promote user: " + error.message);
     }
 };
@@ -967,7 +1338,6 @@ window.deleteUserRecord = async function(userId) {
         alert("Member profile successfully removed.");
         loadAdminUsers(); 
     } catch (error) {
-        console.error("Error deleting user:", error);
         alert("Failed to remove member profile: " + error.message);
     }
 };
@@ -975,6 +1345,7 @@ window.deleteUserRecord = async function(userId) {
 async function loadAdminFeedback() {
     const feedbackTable = document.getElementById("adminFeedbackTableBody");
     if (!feedbackTable) return;
+    
     feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading feedback records...</td></tr>`;
 
     try {
@@ -1008,7 +1379,7 @@ async function loadAdminFeedback() {
                     </td>
                     <td class="small">
                         ${snippet}
-                        <div class="mt-1">${generateAttachmentBadges(data.attachments)}</div>
+                        <div class="mt-1">${generateMediaBadges(data.attachments)}</div>
                     </td>
                     <td>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
@@ -1028,22 +1399,95 @@ window.deleteGlobalFeedback = async function(msgId) {
         await deleteDoc(doc(db, "score_feedback", msgId));
         loadAdminFeedback(); 
     } catch (error) {
-        console.error("Error deleting feedback:", error);
         alert("Failed to delete comment: " + error.message);
     }
 };
+
+async function loadMemberInbox(user) {
+    const inboxFeed = document.getElementById("memberInboxFeed");
+    if (!inboxFeed) return;
+
+    inboxFeed.innerHTML = "<div class='text-center text-muted-c my-5'>Loading inbox...</div>";
+
+    try {
+        const feedbackQuery = query(collection(db, "score_feedback"), where("performerEmail", "==", user.email));
+        const feedbackSnap = await getDocs(feedbackQuery);
+        
+        const commsSnap = await getDocs(collection(db, "communications"));
+        
+        let messages = [];
+        
+        feedbackSnap.forEach(doc => {
+            messages.push({ ...doc.data(), source: 'feedback' });
+        });
+        
+        commsSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.type === "broadcast" || data.targetUid === user.uid) {
+                messages.push({ ...data, source: 'comm' });
+            }
+        });
+        
+        if (messages.length === 0) {
+            inboxFeed.innerHTML = `
+                <div class="card kcpo-card p-4 text-center">
+                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
+                    <p class="text-muted-c small mb-0">Your inbox is empty.</p>
+                </div>`;
+            return;
+        }
+
+        messages.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+
+        inboxFeed.innerHTML = "";
+        
+        messages.forEach((item) => {
+            const dateStr = item.createdAt ? item.createdAt.toDate().toLocaleDateString() : "Recently";
+            
+            if (item.source === 'feedback') {
+                inboxFeed.innerHTML += `
+                    <div class="card kcpo-card p-3 mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge badge-kcpo">${item.pieceTitle || "Repertoire Item"}</span>
+                            <small class="text-muted-c">Feedback From: ${item.senderName || "Member"} • ${dateStr}</small>
+                        </div>
+                        <p class="small mb-0 text-muted-c">${item.message}</p>
+                        ${generateMediaBadges(item.attachments)}
+                    </div>`;
+            } else {
+                const isDM = item.type === "direct";
+                const badgeHtml = isDM ? `<span class="badge bg-danger ms-2">Direct Message</span>` : `<span class="badge bg-gold text-dark ms-2">Admin Broadcast</span>`;
+                
+                inboxFeed.innerHTML += `
+                    <div class="card kcpo-card p-3 mb-2 border-${isDM ? 'danger' : 'secondary'}">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>${item.title} ${badgeHtml}</strong>
+                            <small class="text-muted-c">${dateStr}</small>
+                        </div>
+                        <p class="small mb-2 text-light" style="white-space: pre-wrap;">${item.message}</p>
+                        ${generateMediaBadges(item.attachments)}
+                    </div>`;
+            }
+        });
+        
+    } catch (error) {
+        console.error("Error loading inbox:", error);
+        inboxFeed.innerHTML = "<div class='text-danger'>Failed to load inbox.</div>";
+    }
+}
 
 async function initMemberDashboard() {
     const memberContent = document.getElementById("memberContent");
     if (!memberContent) return;
 
     const accessDeniedMsg = document.getElementById("memberAccessDenied");
+    
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            if (accessDeniedMsg) accessDeniedMsg.classList.add("d-none");
+            accessDeniedMsg?.classList.add("d-none");
             memberContent.classList.remove("d-none");
             
-            await loadMemberInbox(user.email);
+            await loadMemberInbox(user);
             
             const uploadForm = document.getElementById("memberScoreUploadForm");
             if (uploadForm) {
@@ -1058,101 +1502,63 @@ async function initMemberDashboard() {
 
                     if (!file) return;
 
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = `Uploading...`;
+                    submitBtn.disabled = true; 
+                    submitBtn.innerHTML = `Uploading...`; 
                     statusBox.classList.add("d-none");
 
                     try {
                         const formData = new FormData();
-                        formData.append("file", file);
+                        formData.append("file", file); 
                         formData.append("upload_preset", CLOUDINARY_PRESET);
-                        const cloudinaryRes = await fetch(CLOUDINARY_URL, { method: "POST", body: formData });
+                        
+                        const cloudinaryRes = await fetch(CLOUDINARY_RAW_URL, { 
+                            method: "POST", 
+                            body: formData 
+                        });
                         const cloudinaryData = await cloudinaryRes.json();
                         
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
-                            pdfUrl: cloudinaryData.secure_url,
+                            pdfUrl: cloudinaryData.secure_url, 
                             fileName: file.name,
-                            uploadedByEmail: user.email,
+                            uploadedByEmail: user.email, 
                             uploadedByUid: user.uid,
                             uploaderName: sessionStorage.getItem("kcpo_name") || "Member",
                             createdAt: serverTimestamp()
                         });
 
-                        statusBox.className = "alert alert-success small p-2 mt-3 d-block";
-                        statusBox.textContent = "Score uploaded successfully!";
+                        statusBox.className = "alert alert-success small p-2 mt-3 d-block"; 
+                        statusBox.textContent = "Score uploaded successfully!"; 
                         uploadForm.reset();
+                        
                     } catch (error) {
-                        statusBox.className = "alert alert-danger small p-2 mt-3 d-block";
+                        statusBox.className = "alert alert-danger small p-2 mt-3 d-block"; 
                         statusBox.textContent = "Upload failed: " + error.message;
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = "Upload to Repository";
+                    } finally { 
+                        submitBtn.disabled = false; 
+                        submitBtn.textContent = "Upload to Repository"; 
                     }
                 });
             }
         } else {
             memberContent.classList.add("d-none");
-            if (accessDeniedMsg) accessDeniedMsg.classList.remove("d-none");
+            accessDeniedMsg?.classList.remove("d-none");
         }
     });
-}
-
-async function loadMemberInbox(userEmail) {
-    const inboxFeed = document.getElementById("memberInboxFeed");
-    if (!inboxFeed) return;
-
-    try {
-        const q = query(collection(db, "score_feedback"), where("performerEmail", "==", userEmail));
-        const querySnapshot = await getDocs(q);
-        inboxFeed.innerHTML = "";
-        
-        if (querySnapshot.empty) {
-            inboxFeed.innerHTML = `
-                <div class="card kcpo-card p-4 text-center">
-                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
-                    <p class="text-muted-c small mb-0">Your peer feedback from recent masterclasses will appear here.</p>
-                </div>`;
-            return;
-        }
-
-        let messages = [];
-        querySnapshot.forEach(docSnap => messages.push(docSnap.data()));
-        messages.sort((a, b) => {
-            const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
-            const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
-            return timeB - timeA; 
-        });
-
-        messages.forEach((item) => {
-            const dateStr = item.createdAt ? item.createdAt.toDate().toLocaleDateString() : "Recently";
-            inboxFeed.innerHTML += `
-                <div class="card kcpo-card p-3 mb-2">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="badge badge-kcpo">${item.pieceTitle || "Repertoire Item"}</span>
-                        <small class="text-muted-c">From: ${item.senderName || "Member"} • ${dateStr}</small>
-                    </div>
-                    <p class="small mb-0 text-muted-c">${item.message}</p>
-                    ${generateAttachmentBadges(item.attachments)}
-                </div>`;
-        });
-    } catch (error) {
-        console.error("Error loading inbox:", error);
-    }
 }
 
 // ----------------------------------------------------------------------------
 // BOOT
 // ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
-    initTheme();
-    markActiveNavLink();
-    injectAuthModal();
+    initTheme(); 
+    markActiveNavLink(); 
+    injectAuthModal(); 
     injectImageViewer(); 
     initAuth();
-    populateDynamicMonths();
-    initRegistrationForm();
-    initMasterclasses();
-    initAdminDashboard();
+    populateDynamicMonths(); 
+    initRegistrationForm(); 
+    initMasterclasses(); 
+    initAdminDashboard(); 
     initMemberDashboard();
 });
