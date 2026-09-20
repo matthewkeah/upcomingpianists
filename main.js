@@ -1415,7 +1415,12 @@ async function loadMemberInbox(user) {
         const feedbackQuery = query(collection(db, "score_feedback"), where("performerEmail", "==", user.email));
         const feedbackSnap = await getDocs(feedbackQuery);
         
-        const commsSnap = await getDocs(collection(db, "communications"));
+        // Fix: Split the communications query to perfectly satisfy the Firestore security rules
+        const broadcastQuery = query(collection(db, "communications"), where("type", "==", "broadcast"));
+        const broadcastSnap = await getDocs(broadcastQuery);
+
+        const dmQuery = query(collection(db, "communications"), where("targetUid", "==", user.uid));
+        const dmSnap = await getDocs(dmQuery);
         
         let messages = [];
         
@@ -1423,10 +1428,14 @@ async function loadMemberInbox(user) {
             messages.push({ ...doc.data(), source: 'feedback' });
         });
         
-        commsSnap.forEach(doc => {
-            const data = doc.data();
-            if (data.type === "broadcast" || data.targetUid === user.uid) {
-                messages.push({ ...data, source: 'comm' });
+        broadcastSnap.forEach(doc => {
+            messages.push({ ...doc.data(), source: 'comm' });
+        });
+
+        dmSnap.forEach(doc => {
+            // Prevent duplicate entries if a DM accidentally shares a tag
+            if (doc.data().type !== "broadcast") {
+                messages.push({ ...doc.data(), source: 'comm' });
             }
         });
         
