@@ -49,10 +49,8 @@ const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
 
-// Cloudinary Endpoints
-const CLOUDINARY_RAW_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/raw/upload"; 
-const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
-const CLOUDINARY_VIDEO_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/video/upload"; 
+// Unified Cloudinary Endpoint
+const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/auto/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
 // EmailJS Credentials
@@ -330,9 +328,9 @@ const IMAGE_VIEWER_HTML = `
                 <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;"><i class="bi bi-x-lg text-light"></i></button>
             </div>
             <div class="modal-body text-center p-0 mt-2 position-relative">
-                <button id="btnViewerPrev" class="btn btn-dark rounded-circle position-absolute top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
+                <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-absolute top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
                 <img id="viewerImageTarget" src="" class="img-fluid rounded" style="max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Annotated Score">
-                <button id="btnViewerNext" class="btn btn-dark rounded-circle position-absolute top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
+                <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-absolute top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
             </div>
         </div>
     </div>
@@ -684,12 +682,16 @@ async function processAndSaveAnnotations() {
             formData.append("file", mergedDataUrl);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { 
+            const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { 
                 method: "POST", 
                 body: formData 
             });
             
             const cloudinaryData = await cloudinaryRes.json();
+            
+            if (!cloudinaryRes.ok) {
+                throw new Error(cloudinaryData.error?.message || "Cloudinary annotation upload failed");
+            }
             
             window.pendingAttachments.push({ 
                 url: cloudinaryData.secure_url, 
@@ -722,27 +724,21 @@ async function uploadMediaArray(fileList) {
     
     for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        let endpoint = CLOUDINARY_RAW_URL; 
-        let fileType = 'raw';
         
-        if (file.type.startsWith('image/')) { 
-            endpoint = CLOUDINARY_IMAGE_URL; 
-            fileType = 'image'; 
-        } else if (file.type.startsWith('video/')) { 
-            endpoint = CLOUDINARY_VIDEO_URL; 
-            fileType = 'video'; 
-        }
-
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", CLOUDINARY_PRESET);
         
-        const res = await fetch(endpoint, { method: "POST", body: formData });
+        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
         const data = await res.json();
+        
+        if (!res.ok) {
+            throw new Error(data.error?.message || "Media upload failed.");
+        }
         
         uploadedData.push({ 
             url: data.secure_url, 
-            type: fileType, 
+            type: data.resource_type === 'image' ? 'image' : (data.resource_type === 'video' ? 'video' : 'raw'), 
             name: file.name 
         });
     }
@@ -755,12 +751,16 @@ function generateMediaBadges(attachmentsArray) {
     
     let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
     
-    const imageGallery = attachmentsArray.filter(a => a.type === 'image').map(a => a.url);
+    // Safety check to ensure we only push valid, defined URLs to the image gallery
+    const imageGallery = attachmentsArray.filter(a => a.type === 'image' && a.url && a.url !== 'undefined').map(a => a.url);
     const encodedGallery = encodeURIComponent(JSON.stringify(imageGallery));
     
     let imgCounter = 0;
     
     attachmentsArray.forEach((media) => {
+        // Prevent 404 links from broken uploads from rendering at all
+        if (!media.url || media.url === 'undefined') return;
+        
         if (media.type === 'image') {
             html += `<span onclick="openImageViewer('${encodedGallery}', ${imgCounter})" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Image</span>`;
             imgCounter++;
@@ -1007,10 +1007,12 @@ function initRegistrationForm() {
             formData.append("file", file);
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const res = await fetch(CLOUDINARY_RAW_URL, { method: "POST", body: formData });
+            const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
             const data = await res.json();
             
-            if (!res.ok) throw new Error("Cloudinary upload failed.");
+            if (!res.ok) {
+                throw new Error(data.error?.message || "Cloudinary upload failed.");
+            }
 
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
@@ -1538,12 +1540,16 @@ async function initMemberDashboard() {
                         formData.append("file", file); 
                         formData.append("upload_preset", CLOUDINARY_PRESET);
                         
-                        const cloudinaryRes = await fetch(CLOUDINARY_RAW_URL, { 
+                        const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { 
                             method: "POST", 
                             body: formData 
                         });
                         const cloudinaryData = await cloudinaryRes.json();
                         
+                        if (!cloudinaryRes.ok) {
+                            throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
+                        }
+
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url, 
