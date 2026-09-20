@@ -194,7 +194,6 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
-        // FIXED: Switched d-none to d-block so errors are visible to the user
         box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
         box.textContent = msg; 
     }
@@ -223,7 +222,6 @@ function initAuth() {
 
     onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
-        
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -257,7 +255,6 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
@@ -282,9 +279,7 @@ function initAuth() {
                 const password = document.getElementById("signInPassword").value;
                 await signInWithEmailAndPassword(auth, email, password);
                 window.location.reload();
-            } catch (err) { 
-                showAuthAlert(err.message); 
-            }
+            } catch (err) { showAuthAlert(err.message); }
         });
     }
 
@@ -298,18 +293,11 @@ function initAuth() {
                 const name = document.getElementById("signUpName").value;
                 
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
-                
                 await setDoc(doc(db, "users", cred.user.uid), {
-                    name: name,
-                    email: email,
-                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
-                    createdAt: serverTimestamp()
+                    name: name, email: email, role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member", createdAt: serverTimestamp()
                 });
-                
                 window.location.reload();
-            } catch (err) { 
-                showAuthAlert(err.message); 
-            }
+            } catch (err) { showAuthAlert(err.message); }
         });
     }
 }
@@ -343,20 +331,8 @@ const IMAGE_VIEWER_HTML = `
 function injectImageViewer() {
     if (!document.getElementById("imageViewerModal")) {
         document.body.insertAdjacentHTML("beforeend", IMAGE_VIEWER_HTML);
-        
-        document.getElementById('btnViewerPrev').addEventListener('click', () => {
-            if (currentImageIndex > 0) {
-                currentImageIndex--;
-                updateViewerImage();
-            }
-        });
-        
-        document.getElementById('btnViewerNext').addEventListener('click', () => {
-            if (currentImageIndex < currentGallery.length - 1) {
-                currentImageIndex++;
-                updateViewerImage();
-            }
-        });
+        document.getElementById('btnViewerPrev').addEventListener('click', () => { if (currentImageIndex > 0) { currentImageIndex--; updateViewerImage(); } });
+        document.getElementById('btnViewerNext').addEventListener('click', () => { if (currentImageIndex < currentGallery.length - 1) { currentImageIndex++; updateViewerImage(); } });
     }
 }
 
@@ -382,19 +358,15 @@ window.downloadViewerImage = async function() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-    } catch (err) {
-        console.error("Download failed", err);
-    }
+    } catch (err) { console.error("Download failed", err); }
 };
 
 window.updateViewerImage = function() {
     if (!currentGallery || currentGallery.length === 0) return;
-    
     imgViewerScale = 1.0;
     const targetImg = document.getElementById('viewerImageTarget');
     targetImg.style.width = '100%';
     targetImg.src = currentGallery[currentImageIndex];
-    
     document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
     document.getElementById('btnViewerNext').style.display = currentImageIndex < currentGallery.length - 1 ? 'block' : 'none';
 };
@@ -435,13 +407,18 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <div class="modal-body p-0" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
-                <div id="pdfCanvasWrapper" style="display: inline-block; position: relative; margin: 1rem auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                    <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
-                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; display: block;"></canvas>
-                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; display: block;"></canvas>
+            
+            <!-- Scroll Area controlled dynamically. Auto for Move, Hidden for Drawing -->
+            <div class="modal-body p-4" id="pdfScrollArea" style="background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
+                <div id="pdfSizer" style="display: inline-block; position: relative; text-align: left; transition: width 0.2s, height 0.2s;">
+                    <div id="pdfCanvasWrapper" style="transform-origin: top left; transition: transform 0.2s; position: absolute; top: 0; left: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                        <canvas id="pdfRenderCanvas" style="display: block; background: white; touch-action: none;"></canvas>
+                        <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
+                        <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
+                    </div>
                 </div>
             </div>
+            
         </div>
     </div>
 </div>`;
@@ -452,12 +429,13 @@ let pageIsRendering = false;
 let pageNumIsPending = null;
 
 let pdfCssScale = 1.0;         
-window.baseWrapperWidth = 0;
-window.baseWrapperHeight = 0;
+let pdfRenderResolution = 1.5; 
+
+window.baseRenderWidth = 0;
+window.baseRenderHeight = 0;
 
 window.isImageAnnotator = false;
 window.imagePageUrls = [];
-let pageFitScales = {}; 
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
@@ -481,9 +459,11 @@ function injectPdfModal() {
         activeCanvas = document.getElementById("pdfActiveStrokeCanvas");
         activeCtx = activeCanvas.getContext("2d", { willReadFrequently: true });
         
+        // Use standard pointer events to capture touch and mouse universally
         drawCanvas.addEventListener('pointerdown', startDrawing);
         drawCanvas.addEventListener('pointermove', draw);
         window.addEventListener('pointerup', stopDrawing);
+        window.addEventListener('pointercancel', stopDrawing);
         
         document.getElementById('btnPdfPrev').addEventListener('click', onPrevPage);
         document.getElementById('btnPdfNext').addEventListener('click', onNextPage);
@@ -505,24 +485,20 @@ async function loadPDFJSLibrary() {
     });
 }
 
+function applyZoom() {
+    const wrapper = document.getElementById('pdfCanvasWrapper');
+    const sizer = document.getElementById('pdfSizer');
+    
+    wrapper.style.transform = `scale(${pdfCssScale})`;
+    sizer.style.width = (window.baseRenderWidth * pdfCssScale) + 'px';
+    sizer.style.height = (window.baseRenderHeight * pdfCssScale) + 'px';
+}
+
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.2) pdfCssScale = 0.2;
+    if (pdfCssScale < 0.1) pdfCssScale = 0.1;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
-    
-    const w = window.baseWrapperWidth * pdfCssScale;
-    const h = window.baseWrapperHeight * pdfCssScale;
-    
-    const wrapper = document.getElementById('pdfCanvasWrapper');
-    wrapper.style.width = w + 'px';
-    wrapper.style.height = h + 'px';
-    
-    pdfCanvas.style.width = w + 'px';
-    pdfCanvas.style.height = h + 'px';
-    drawCanvas.style.width = w + 'px';
-    drawCanvas.style.height = h + 'px';
-    activeCanvas.style.width = w + 'px';
-    activeCanvas.style.height = h + 'px';
+    applyZoom();
 };
 
 window.setPdfTool = function(tool) {
@@ -531,29 +507,41 @@ window.setPdfTool = function(tool) {
     document.getElementById('toolPen').classList.remove('active');
     document.getElementById('toolHighlight').classList.remove('active');
     
+    const scrollArea = document.getElementById('pdfScrollArea');
+    
     if (tool === 'none') {
         document.getElementById('toolMove').classList.add('active');
         drawCanvas.style.pointerEvents = 'none'; 
+        if (scrollArea) scrollArea.style.overflow = 'auto'; // Restore panning
     } else {
-        if (tool === 'pen') {
-            document.getElementById('toolPen').classList.add('active');
-        } else if (tool === 'highlighter') {
-            document.getElementById('toolHighlight').classList.add('active');
-        }
+        if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
+        else if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
+        
         drawCanvas.style.pointerEvents = 'auto'; 
+        if (scrollArea) scrollArea.style.overflow = 'hidden'; // Lock panning to prevent touch hijacking
     }
+}
+
+function getPointerCoords(e) {
+    if (e.touches && e.touches.length > 0) {
+        return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    }
+    return { clientX: e.clientX, clientY: e.clientY };
 }
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
     
-    const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = window.baseWrapperWidth / rect.width; 
-    const scaleY = window.baseWrapperHeight / rect.height; 
+    if (e.cancelable) e.preventDefault(); // Prevents touch scrolling
     
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const rect = drawCanvas.getBoundingClientRect();
+    const scaleX = drawCanvas.width / rect.width; 
+    const scaleY = drawCanvas.height / rect.height; 
+    
+    const coords = getPointerCoords(e);
+    const x = (coords.clientX - rect.left) * scaleX;
+    const y = (coords.clientY - rect.top) * scaleY;
     
     currentStroke = [{x, y}];
     
@@ -567,7 +555,7 @@ function startDrawing(e) {
         activeCtx.lineWidth = 3; 
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.globalCompositeOperation = 'multiply';
+        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 12; 
         activeCtx.globalAlpha = 0.3; 
@@ -576,19 +564,20 @@ function startDrawing(e) {
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    e.preventDefault(); 
+    if (e.cancelable) e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = window.baseWrapperWidth / rect.width;
-    const scaleY = window.baseWrapperHeight / rect.height;
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
     
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const coords = getPointerCoords(e);
+    const x = (coords.clientX - rect.left) * scaleX;
+    const y = (coords.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
-    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
     
@@ -604,7 +593,7 @@ function stopDrawing() {
     
     isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
-    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
     
     if (!undoHistory[pageNum]) {
@@ -619,11 +608,11 @@ window.undoPdfStroke = function() {
         undoHistory[pageNum].pop(); 
         const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
         
-        drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
         
         const img = new Image();
         img.onload = () => {
-            drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            drawCtx.drawImage(img, 0, 0);
         };
         img.src = targetState;
         
@@ -643,38 +632,21 @@ function saveCurrentPageDrawings() {
     }
 }
 
-function setupCanvasDimensions() {
-    const wrapper = document.getElementById('pdfCanvasWrapper');
-    wrapper.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
-    wrapper.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
-    
-    const dpr = window.devicePixelRatio || 1;
-    [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
-        c.width = window.baseWrapperWidth * dpr;
-        c.height = window.baseWrapperHeight * dpr;
-        c.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
-        c.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
-    });
-    
-    pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-
 function finalizeRenderStep(num) {
     pageIsRendering = false;
     
-    drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
-    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    drawCtx.clearRect(0, 0, window.baseRenderWidth, window.baseRenderHeight);
+    activeCtx.clearRect(0, 0, window.baseRenderWidth, window.baseRenderHeight);
     
     if (pageDrawings[num]) {
         const img = new Image();
         img.onload = () => {
-            drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            drawCtx.drawImage(img, 0, 0);
+            if (!undoHistory[num]) undoHistory[num] = [drawCanvas.toDataURL("image/png")];
         };
         img.src = pageDrawings[num];
     } else {
-        undoHistory[num] = [drawCanvas.toDataURL("image/png")];
+        if (!undoHistory[num]) undoHistory[num] = [drawCanvas.toDataURL("image/png")];
     }
     
     const totalPages = window.isImageAnnotator ? window.imagePageUrls.length : pdfDoc.numPages;
@@ -696,36 +668,40 @@ function renderPage(num) {
         const img = new Image();
         img.crossOrigin = "Anonymous";
         img.onload = () => {
-            const container = document.getElementById('pdfContainer');
-            const measuredWidth = container ? container.clientWidth : 0;
-            const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
+            window.baseRenderWidth = img.width;
+            window.baseRenderHeight = img.height;
             
-            const fitScale = Math.min(availableWidth / img.width, 1.0); 
-            pageFitScales[num] = fitScale; 
-            window.baseWrapperWidth = img.width * fitScale;
-            window.baseWrapperHeight = img.height * fitScale;
+            [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
+                c.width = window.baseRenderWidth;
+                c.height = window.baseRenderHeight;
+            });
             
-            setupCanvasDimensions();
-            pdfCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            const container = document.getElementById('pdfScrollArea');
+            const availableWidth = container ? container.clientWidth - 40 : window.innerWidth;
+            pdfCssScale = Math.min(availableWidth / window.baseRenderWidth, 1.0); 
+            
+            applyZoom();
+            pdfCtx.drawImage(img, 0, 0);
             finalizeRenderStep(num);
         };
         img.src = window.imagePageUrls[num - 1];
     } else {
         pdfDoc.getPage(num).then(page => {
-            const baseViewport = page.getViewport({ scale: 1.0 });
+            const viewport = page.getViewport({ scale: pdfRenderResolution });
             
-            const container = document.getElementById('pdfContainer');
-            const measuredWidth = container ? container.clientWidth : 0;
-            const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
+            window.baseRenderWidth = viewport.width;
+            window.baseRenderHeight = viewport.height;
             
-            const fitScale = Math.min(availableWidth / baseViewport.width, 1.0); 
-            pageFitScales[num] = fitScale; 
+            [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
+                c.width = window.baseRenderWidth;
+                c.height = window.baseRenderHeight;
+            });
             
-            const viewport = page.getViewport({ scale: fitScale });
-            window.baseWrapperWidth = viewport.width;
-            window.baseWrapperHeight = viewport.height;
+            const container = document.getElementById('pdfScrollArea');
+            const availableWidth = container ? container.clientWidth - 40 : window.innerWidth;
+            pdfCssScale = Math.min(availableWidth / window.baseRenderWidth, 1.0); 
             
-            setupCanvasDimensions();
+            applyZoom();
             
             const renderContext = { canvasContext: pdfCtx, viewport: viewport };
             page.render(renderContext).promise.then(() => finalizeRenderStep(num));
@@ -765,13 +741,11 @@ window.openMediaAnnotator = async function(mediaUrlsString, mediaType) {
     window.imagePageUrls = window.isImageAnnotator ? mediaUrlsString.split(',') : [];
     
     pageDrawings = {};
-    pageFitScales = {};
     pagesEdited.clear();
     undoHistory = {};
     pageNum = 1;
     pdfCssScale = 1.0;
     
-    document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
     setPdfTool('none');
     
     const modalEl = document.getElementById('annotatorModal');
@@ -814,10 +788,8 @@ async function processAndSaveAnnotations() {
     
     try {
         window.pendingAttachments = [];
-        const dpr = window.devicePixelRatio || 1;
         
         for (let num of pagesEdited) {
-            let w, h;
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
             
@@ -827,27 +799,21 @@ async function processAndSaveAnnotations() {
                 baseImg.crossOrigin = "Anonymous";
                 await new Promise(r => { baseImg.onload = r; baseImg.src = srcUrl; });
                 
-                const fitScale = pageFitScales[num] || 1.0;
-                w = baseImg.width * fitScale;
-                h = baseImg.height * fitScale;
-                
-                offCanvas.width = w * dpr; offCanvas.height = h * dpr;
-                offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                offCtx.drawImage(baseImg, 0, 0, w, h);
+                offCanvas.width = baseImg.width;
+                offCanvas.height = baseImg.height;
+                offCtx.drawImage(baseImg, 0, 0);
             } else {
                 const page = await pdfDoc.getPage(num);
-                const fitScale = pageFitScales[num] || 1.0;
-                const viewport = page.getViewport({ scale: fitScale });
-                w = viewport.width; h = viewport.height;
+                const viewport = page.getViewport({ scale: pdfRenderResolution });
                 
-                offCanvas.width = w * dpr; offCanvas.height = h * dpr;
-                offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                offCanvas.width = viewport.width;
+                offCanvas.height = viewport.height;
                 await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
             }
             
             const annImg = new Image();
             await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[num]; });
-            offCtx.drawImage(annImg, 0, 0, w, h);
+            offCtx.drawImage(annImg, 0, 0);
             
             const formData = new FormData();
             formData.append("file", offCanvas.toDataURL("image/png"));
