@@ -945,8 +945,10 @@ async function initAdminBroadcasts() {
             setComposerTarget('all', 'All Members', 'all');
             
         } catch (error) {
+            console.error("Broadcast Error Payload:", error); 
             status.className = "alert alert-danger mt-3 d-block small";
-            status.textContent = "Error: " + error.message;
+            const errorMessage = error.text || error.message || "An unknown error occurred. Check the console.";
+            status.textContent = "Error: " + errorMessage;
         } finally {
             btn.disabled = false; 
             btn.textContent = "Publish & Send Email Notification";
