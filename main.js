@@ -630,12 +630,17 @@ function renderPdfPage(num) {
         
         const container = document.getElementById('pdfContainer');
         // clientWidth can read as 0 (or a stale value) if this runs before the
-        // modal has finished its show transition/layout — fall back to the
-        // viewport width in that case so we never compute a fit scale off a
-        // bogus container size (this was the source of the "starts zoomed
-        // in on phones" bug).
+        // modal has finished its show transition/layout — and some scores
+        // (this Schumann PDF included) have an unusually large native page
+        // size (1240 x 1754 pts here, vs. ~600pt for a normal page), which
+        // makes any measurement error much more visible. So rather than
+        // only falling back to window.innerWidth when the container reading
+        // looks broken, we always take whichever is SMALLER of the two —
+        // the container can never make the render bigger than the device's
+        // actual screen, no matter what caused a bad measurement.
         const measuredWidth = container ? container.clientWidth : 0;
-        const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
+        const reliableWidth = measuredWidth > 100 ? Math.min(measuredWidth, window.innerWidth) : window.innerWidth;
+        const availableWidth = Math.min(reliableWidth, 1400) - 40;
         
         // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
@@ -650,6 +655,20 @@ function renderPdfPage(num) {
         
         activeCanvas.height = viewport.height;
         activeCanvas.width = viewport.width;
+
+        // Belt-and-suspenders, the same trick that makes the img-fluid image
+        // viewer always behave: cap the on-screen (CSS) size directly, so
+        // even if the fit-scale math above is ever wrong for some page,
+        // the canvas can never physically overflow the screen — worst case
+        // it looks a touch soft instead of spilling off the edges. This is
+        // purely visual; the pointer-to-canvas coordinate mapping in
+        // startDrawing()/draw() already converts using the actual on-screen
+        // rect, so annotations still land in the right place at any zoom.
+        const displayCapPx = Math.max(window.innerWidth - 32, 200);
+        [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
+            c.style.maxWidth = displayCapPx + 'px';
+            c.style.height = 'auto';
+        });
         
         const renderContext = {
             canvasContext: pdfCtx,
