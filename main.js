@@ -101,8 +101,9 @@ function markActiveNavLink() {
 function populateDynamicMonths() {
     const registerDropdown = document.getElementById("sessionMonth");
     const masterclassDropdown = document.getElementById("repertoireMonthSelect");
+    const memberUploadDropdown = document.getElementById("memberSessionMonth"); // New Target
     
-    if (!registerDropdown && !masterclassDropdown) return;
+    if (!registerDropdown && !masterclassDropdown && !memberUploadDropdown) return;
 
     const upcomingMonths = [];
     const currentDate = new Date();
@@ -131,7 +132,28 @@ function populateDynamicMonths() {
             masterclassDropdown.appendChild(opt);
         });
     }
+
+    // Populate the new member dashboard dropdown
+    if (memberUploadDropdown) {
+        upcomingMonths.forEach(monthStr => {
+            const opt = document.createElement("option");
+            opt.value = monthStr;
+            opt.textContent = monthStr;
+            memberUploadDropdown.appendChild(opt);
+        });
+    }
 }
+
+    if (masterclassDropdown) {
+        upcomingMonths.forEach((monthStr, index) => {
+            const opt = document.createElement("option");
+            opt.value = monthStr;
+            opt.textContent = monthStr;
+            if (index === 0) opt.selected = true; 
+            masterclassDropdown.appendChild(opt);
+        });
+    }
+
 
 // ----------------------------------------------------------------------------
 // AUTHENTICATION & ADMIN ENFORCEMENT
@@ -884,7 +906,12 @@ async function loadAdminDirectory() {
 
 async function initAdminBroadcasts() {
     const form = document.getElementById("adminBroadcastForm");
-    if (!form) return;
+    
+    // Stop execution if the form doesn't exist OR if it already has a listener
+    if (!form || form.dataset.initialized) return; 
+    
+    // Set the flag so future auth refreshes don't attach duplicate listeners
+    form.dataset.initialized = "true";
     
     await loadAdminDirectory();
 
@@ -1501,11 +1528,16 @@ async function initMemberDashboard() {
             await loadMemberInbox(user);
             
             const uploadForm = document.getElementById("memberScoreUploadForm");
-            if (uploadForm) {
+            
+            if (uploadForm && !uploadForm.dataset.initialized) {
+                
+                uploadForm.dataset.initialized = "true";
+                
                 uploadForm.addEventListener("submit", async (e) => {
                     e.preventDefault();
                     
                     const titleInput = document.getElementById("scoreTitle");
+                    const monthInput = document.getElementById("memberSessionMonth"); // Target Month
                     const fileInput = document.getElementById("pdfFile");
                     const statusBox = document.getElementById("uploadStatusBox");
                     const submitBtn = uploadForm.querySelector("button[type=submit]");
@@ -1532,9 +1564,10 @@ async function initMemberDashboard() {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url, 
                             fileName: file.name,
-                            uploadedByEmail: user.email, 
-                            uploadedByUid: user.uid,
-                            uploaderName: sessionStorage.getItem("kcpo_name") || "Member",
+                            sessionMonth: monthInput.value, // Saves the target month
+                            uploadedByEmail: user.email,    // Automated from session
+                            uploadedByUid: user.uid,        // Automated from session
+                            uploaderName: sessionStorage.getItem("kcpo_name") || "Member", // Automated from session
                             createdAt: serverTimestamp()
                         });
 
