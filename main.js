@@ -222,6 +222,7 @@ function initAuth() {
 
     onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
+        
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -255,6 +256,7 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
+            
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
@@ -408,11 +410,12 @@ const PDF_MODAL_HTML = `
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
             
-            <!-- Scroll Area controlled dynamically. Auto for Move, Hidden for Drawing -->
+            <!-- Robust Scrolling Container (Always allowed to scroll) -->
             <div class="modal-body p-4" id="pdfScrollArea" style="background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
                 <div id="pdfSizer" style="display: inline-block; position: relative; text-align: left; transition: width 0.2s, height 0.2s;">
+                    <!-- Explicitly removed touch-action: none from the background render canvas so 'Move' mode allows panning -->
                     <div id="pdfCanvasWrapper" style="transform-origin: top left; transition: transform 0.2s; position: absolute; top: 0; left: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                        <canvas id="pdfRenderCanvas" style="display: block; background: white; touch-action: none;"></canvas>
+                        <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                         <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
                         <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
                     </div>
@@ -459,7 +462,7 @@ function injectPdfModal() {
         activeCanvas = document.getElementById("pdfActiveStrokeCanvas");
         activeCtx = activeCanvas.getContext("2d", { willReadFrequently: true });
         
-        // Use standard pointer events to capture touch and mouse universally
+        // Pointer events universally capture both mouse and native touch safely
         drawCanvas.addEventListener('pointerdown', startDrawing);
         drawCanvas.addEventListener('pointermove', draw);
         window.addEventListener('pointerup', stopDrawing);
@@ -495,10 +498,29 @@ function applyZoom() {
 }
 
 window.zoomPdf = function(delta) {
+    const scrollArea = document.getElementById('pdfScrollArea');
+    let centerX = 0, centerY = 0;
+    
+    // Mathematically calculates the exact center of your screen to prevent top-left zooming drift
+    if (scrollArea) {
+        centerX = scrollArea.scrollLeft + scrollArea.clientWidth / 2;
+        centerY = scrollArea.scrollTop + scrollArea.clientHeight / 2;
+    }
+    
+    const relX = centerX / pdfCssScale;
+    const relY = centerY / pdfCssScale;
+    
     pdfCssScale += delta;
     if (pdfCssScale < 0.1) pdfCssScale = 0.1;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
+    
     applyZoom();
+    
+    // Instantly snaps the scrollbar back to your calculated center point
+    if (scrollArea) {
+        scrollArea.scrollLeft = (relX * pdfCssScale) - scrollArea.clientWidth / 2;
+        scrollArea.scrollTop = (relY * pdfCssScale) - scrollArea.clientHeight / 2;
+    }
 };
 
 window.setPdfTool = function(tool) {
@@ -507,41 +529,31 @@ window.setPdfTool = function(tool) {
     document.getElementById('toolPen').classList.remove('active');
     document.getElementById('toolHighlight').classList.remove('active');
     
-    const scrollArea = document.getElementById('pdfScrollArea');
-    
     if (tool === 'none') {
         document.getElementById('toolMove').classList.add('active');
+        // Setting pointer-events to none lets your finger bypass the drawing layer and hit the scrolling engine
         drawCanvas.style.pointerEvents = 'none'; 
-        if (scrollArea) scrollArea.style.overflow = 'auto'; // Restore panning
     } else {
         if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
         else if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
         
+        // Re-engaging pointer-events catches your finger so the drawing layer responds
         drawCanvas.style.pointerEvents = 'auto'; 
-        if (scrollArea) scrollArea.style.overflow = 'hidden'; // Lock panning to prevent touch hijacking
     }
-}
-
-function getPointerCoords(e) {
-    if (e.touches && e.touches.length > 0) {
-        return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
-    }
-    return { clientX: e.clientX, clientY: e.clientY };
 }
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
     
-    if (e.cancelable) e.preventDefault(); // Prevents touch scrolling
-    
     const rect = drawCanvas.getBoundingClientRect();
+    
+    // Perfect 1:1 mapping based solely on bounding dimensions. Eliminates all coordinate offset drift.
     const scaleX = drawCanvas.width / rect.width; 
     const scaleY = drawCanvas.height / rect.height; 
     
-    const coords = getPointerCoords(e);
-    const x = (coords.clientX - rect.left) * scaleX;
-    const y = (coords.clientY - rect.top) * scaleY;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke = [{x, y}];
     
@@ -557,23 +569,22 @@ function startDrawing(e) {
     } else if (currentTool === 'highlighter') {
         activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 12; 
+        activeCtx.lineWidth = 12; // Thinned to 12
         activeCtx.globalAlpha = 0.3; 
     }
 }
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    if (e.cancelable) e.preventDefault(); 
+    e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
     
-    const coords = getPointerCoords(e);
-    const x = (coords.clientX - rect.left) * scaleX;
-    const y = (coords.clientY - rect.top) * scaleY;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
