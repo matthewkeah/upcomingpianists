@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KCPO PORTAL — APP ENGINE
- * Loaded as a module on every page: <script type="module" src="main.js"></script>
+ * Loaded as a module on every page: <script type="module" src="main.js?v=1.1"></script>
  * ============================================================================
  */
 
@@ -332,7 +332,7 @@ const IMAGE_VIEWER_HTML = `
                 <button type="button" class="btn btn-dark rounded-circle" onclick="downloadViewerImage()" style="opacity: 0.8;" title="Download"><i class="bi bi-download text-light"></i></button>
                 <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;" title="Close"><i class="bi bi-x-lg text-light"></i></button>
             </div>
-            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh; touch-action: pan-x pan-y;">
+            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh;">
                 <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-fixed top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
                 <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: transform 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
                 <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-fixed top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
@@ -363,7 +363,7 @@ function injectImageViewer() {
 
 window.zoomImageViewer = function(delta) {
     imgViewerScale += delta;
-    if (imgViewerScale < 0.1) imgViewerScale = 0.1; // Extended floor for deep mobile zoom out
+    if (imgViewerScale < 0.1) imgViewerScale = 0.1;
     if (imgViewerScale > 4.0) imgViewerScale = 4.0;
     document.getElementById('viewerImageTarget').style.transform = `scale(${imgViewerScale})`;
 };
@@ -433,7 +433,7 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start; touch-action: pan-x pan-y;">
+            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
                 <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform-origin: top center; transition: transform 0.2s ease;">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                     <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
@@ -449,8 +449,8 @@ let pageNum = 1;
 let pageIsRendering = false;
 let pageNumIsPending = null;
 
-let pdfRenderResolution = 1.5; 
 let pdfCssScale = 1.0;         
+let pageFitScales = {}; // Tracks the exact dynamic fit size for perfect save alignment
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
@@ -503,7 +503,7 @@ async function loadPDFJSLibrary() {
 
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.05) pdfCssScale = 0.05; // Deep lower bound for flexible mobile zooming out
+    if (pdfCssScale < 0.05) pdfCssScale = 0.05;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
 };
@@ -530,12 +530,14 @@ window.setPdfTool = function(tool) {
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
-    
     isDrawing = true;
     
+    const dpr = window.devicePixelRatio || 1;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = drawCanvas.width / rect.width;
-    const scaleY = drawCanvas.height / rect.height;
+    
+    // Calculate scaling factoring in high-DPI canvas actual size vs CSS dimensions
+    const scaleX = drawCanvas.width / rect.width; 
+    const scaleY = drawCanvas.height / rect.height; 
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
@@ -548,19 +550,20 @@ function startDrawing(e) {
     const activeColor = document.getElementById('pdfColorPicker').value || '#ff0000';
     
     if (currentTool === 'pen') {
+        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 3;
+        activeCtx.lineWidth = 3 * dpr; // Scale brush to match physical pixels
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
+        activeCtx.globalCompositeOperation = 'multiply'; // Accurate blending mode
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 24;
+        activeCtx.lineWidth = 24 * dpr; // Scale brush to match physical pixels
         activeCtx.globalAlpha = 0.3; 
     }
 }
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
@@ -592,26 +595,32 @@ function stopDrawing() {
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
     
-    if (!undoHistory[pageNum]) undoHistory[pageNum] = [];
+    if (!undoHistory[pageNum]) {
+        undoHistory[pageNum] = [drawCanvas.toDataURL("image/png")];
+    }
     undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
-    
     pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
 }
 
 window.undoPdfStroke = function() {
-    if (undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
+    if (undoHistory[pageNum] && undoHistory[pageNum].length > 1) {
         undoHistory[pageNum].pop(); 
+        const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
+        
         drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
         
-        if (undoHistory[pageNum].length > 0) {
-            const lastState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
-            const img = new Image();
-            img.onload = () => drawCtx.drawImage(img, 0, 0);
-            img.src = lastState;
-            pageDrawings[pageNum] = lastState;
-        } else {
+        const img = new Image();
+        img.onload = () => {
+            drawCtx.drawImage(img, 0, 0);
+        };
+        img.src = targetState;
+        
+        if (undoHistory[pageNum].length === 1) {
             delete pageDrawings[pageNum];
             pagesEdited.delete(pageNum);
+        } else {
+            pageDrawings[pageNum] = targetState;
+            pagesEdited.add(pageNum);
         }
     }
 };
@@ -629,25 +638,35 @@ function renderPdfPage(num) {
         const baseViewport = page.getViewport({ scale: 1.0 });
         
         const container = document.getElementById('pdfContainer');
-        const availableWidth = container ? container.clientWidth - 40 : 800; 
+        const measuredWidth = container ? container.clientWidth : 0;
+        const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
         
-        // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
+        pageFitScales[num] = fitScale; // Store the exact calculated fit scale for this specific page
         
         const viewport = page.getViewport({ scale: fitScale });
+        const dpr = window.devicePixelRatio || 1;
         
-        pdfCanvas.height = viewport.height;
-        pdfCanvas.width = viewport.width;
+        // High-DPI physical backing store dimensions
+        pdfCanvas.width = viewport.width * dpr;
+        pdfCanvas.height = viewport.height * dpr;
+        drawCanvas.width = viewport.width * dpr;
+        drawCanvas.height = viewport.height * dpr;
+        activeCanvas.width = viewport.width * dpr;
+        activeCanvas.height = viewport.height * dpr;
         
-        drawCanvas.height = viewport.height;
-        drawCanvas.width = viewport.width;
-        
-        activeCanvas.height = viewport.height;
-        activeCanvas.width = viewport.width;
+        // Logical CSS dimensions
+        pdfCanvas.style.width = `${viewport.width}px`;
+        pdfCanvas.style.height = `${viewport.height}px`;
+        drawCanvas.style.width = `${viewport.width}px`;
+        drawCanvas.style.height = `${viewport.height}px`;
+        activeCanvas.style.width = `${viewport.width}px`;
+        activeCanvas.style.height = `${viewport.height}px`;
         
         const renderContext = {
             canvasContext: pdfCtx,
-            viewport: viewport
+            viewport: viewport,
+            transform: [dpr, 0, 0, dpr, 0, 0] // Native PDF.js high resolution configuration
         };
         
         page.render(renderContext).promise.then(() => {
@@ -658,8 +677,13 @@ function renderPdfPage(num) {
             
             if (pageDrawings[num]) {
                 const img = new Image();
-                img.onload = () => drawCtx.drawImage(img, 0, 0);
+                img.onload = () => {
+                    drawCtx.drawImage(img, 0, 0);
+                    undoHistory[num] = [drawCanvas.toDataURL("image/png")];
+                };
                 img.src = pageDrawings[num];
+            } else {
+                undoHistory[num] = [drawCanvas.toDataURL("image/png")];
             }
             
             if (pageNumIsPending !== null) {
@@ -700,6 +724,7 @@ window.openPdfAnnotator = async function(pdfUrl) {
     injectPdfModal();
     
     pageDrawings = {};
+    pageFitScales = {};
     pagesEdited.clear();
     undoHistory = {};
     pageNum = 1;
@@ -708,14 +733,19 @@ window.openPdfAnnotator = async function(pdfUrl) {
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
     setPdfTool('none');
     
-    const annotatorModal = new bootstrap.Modal(document.getElementById('annotatorModal'));
+    const modalEl = document.getElementById('annotatorModal');
+    const annotatorModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+    const modalShown = new Promise(resolve => {
+        modalEl.addEventListener('shown.bs.modal', resolve, { once: true });
+    });
     annotatorModal.show();
-    
+
     pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
     pdfCtx.fillText("Loading PDF Engine...", 10, 50);
-    
+
     try {
-        const pdfjs = await loadPDFJSLibrary();
+        const [pdfjs] = await Promise.all([loadPDFJSLibrary(), modalShown]);
         const loadingTask = pdfjs.getDocument(pdfUrl);
         pdfDoc = await loadingTask.promise;
         renderPdfPage(pageNum);
@@ -744,14 +774,22 @@ async function processAndSaveAnnotations() {
         
         for (let num of pagesEdited) {
             const page = await pdfDoc.getPage(num);
-            const viewport = page.getViewport({ scale: pdfRenderResolution });
+            
+            // Synchronize the saved scale explicitly with the user's viewing scale
+            const exactRenderScale = pageFitScales[num] || 1.0;
+            const viewport = page.getViewport({ scale: exactRenderScale });
+            const dpr = window.devicePixelRatio || 1;
             
             const offScreenCanvas = document.createElement('canvas');
-            offScreenCanvas.width = viewport.width;
-            offScreenCanvas.height = viewport.height;
+            offScreenCanvas.width = viewport.width * dpr;
+            offScreenCanvas.height = viewport.height * dpr;
             const offCtx = offScreenCanvas.getContext('2d');
             
-            await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
+            await page.render({ 
+                canvasContext: offCtx, 
+                viewport: viewport,
+                transform: [dpr, 0, 0, dpr, 0, 0] // Maintains matching high resolution logic
+            }).promise;
             
             const img = new Image();
             await new Promise((resolve) => {
