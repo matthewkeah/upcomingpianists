@@ -58,7 +58,7 @@ const CLOUDINARY_PRESET = "qe5c4qkd";
 // EmailJS Credentials
 const EMAILJS_PUBLIC_KEY = "knA4KtHIfdGjzsSA0";
 const EMAILJS_SERVICE_ID = "service_f3at2ti";
-const EMAILJS_TEMPLATE_ID = "template_d9oibsw";
+const EMAILJS_TEMPLATE_ID = "template_07vc37l";
 
 window.pendingAttachments = []; 
 let globalUserDirectory = [];
