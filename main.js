@@ -332,7 +332,7 @@ const IMAGE_VIEWER_HTML = `
                 <button type="button" class="btn btn-dark rounded-circle" onclick="downloadViewerImage()" style="opacity: 0.8;" title="Download"><i class="bi bi-download text-light"></i></button>
                 <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;" title="Close"><i class="bi bi-x-lg text-light"></i></button>
             </div>
-            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh;">
+            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh; touch-action: pan-x pan-y;">
                 <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-fixed top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
                 <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: transform 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
                 <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-fixed top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
@@ -363,7 +363,7 @@ function injectImageViewer() {
 
 window.zoomImageViewer = function(delta) {
     imgViewerScale += delta;
-    if (imgViewerScale < 0.1) imgViewerScale = 0.1;
+    if (imgViewerScale < 0.1) imgViewerScale = 0.1; // Extended floor for deep mobile zoom out
     if (imgViewerScale > 4.0) imgViewerScale = 4.0;
     document.getElementById('viewerImageTarget').style.transform = `scale(${imgViewerScale})`;
 };
@@ -433,7 +433,7 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
+            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start; touch-action: pan-x pan-y;">
                 <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform-origin: top center; transition: transform 0.2s ease;">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                     <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
@@ -503,7 +503,7 @@ async function loadPDFJSLibrary() {
 
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.05) pdfCssScale = 0.05;
+    if (pdfCssScale < 0.05) pdfCssScale = 0.05; // Deep lower bound for flexible mobile zooming out
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
 };
@@ -530,6 +530,7 @@ window.setPdfTool = function(tool) {
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
+    
     isDrawing = true;
     
     const rect = drawCanvas.getBoundingClientRect();
@@ -547,12 +548,10 @@ function startDrawing(e) {
     const activeColor = document.getElementById('pdfColorPicker').value || '#ff0000';
     
     if (currentTool === 'pen') {
-        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 3;
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 24;
         activeCtx.globalAlpha = 0.3; 
@@ -561,6 +560,7 @@ function startDrawing(e) {
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
+    
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
@@ -580,6 +580,7 @@ function draw(e) {
     for (let i = 1; i < currentStroke.length; i++) {
         activeCtx.lineTo(currentStroke[i].x, currentStroke[i].y);
     }
+    
     activeCtx.stroke();
 }
 
@@ -591,33 +592,26 @@ function stopDrawing() {
     activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
     
-    if (!undoHistory[pageNum]) {
-        undoHistory[pageNum] = [drawCanvas.toDataURL("image/png")];
-    }
+    if (!undoHistory[pageNum]) undoHistory[pageNum] = [];
     undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
+    
     pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
-    pagesEdited.add(pageNum);
 }
 
 window.undoPdfStroke = function() {
-    if (undoHistory[pageNum] && undoHistory[pageNum].length > 1) {
+    if (undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
         undoHistory[pageNum].pop(); 
-        const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
-        
         drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
         
-        const img = new Image();
-        img.onload = () => {
-            drawCtx.drawImage(img, 0, 0);
-        };
-        img.src = targetState;
-        
-        if (undoHistory[pageNum].length === 1) {
+        if (undoHistory[pageNum].length > 0) {
+            const lastState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
+            const img = new Image();
+            img.onload = () => drawCtx.drawImage(img, 0, 0);
+            img.src = lastState;
+            pageDrawings[pageNum] = lastState;
+        } else {
             delete pageDrawings[pageNum];
             pagesEdited.delete(pageNum);
-        } else {
-            pageDrawings[pageNum] = targetState;
-            pagesEdited.add(pageNum);
         }
     }
 };
@@ -635,26 +629,27 @@ function renderPdfPage(num) {
         const baseViewport = page.getViewport({ scale: 1.0 });
         
         const container = document.getElementById('pdfContainer');
+        // clientWidth can read as 0 (or a stale value) if this runs before the
+        // modal has finished its show transition/layout — fall back to the
+        // viewport width in that case so we never compute a fit scale off a
+        // bogus container size (this was the source of the "starts zoomed
+        // in on phones" bug).
         const measuredWidth = container ? container.clientWidth : 0;
         const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
         
+        // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
+        
         const viewport = page.getViewport({ scale: fitScale });
         
-        pdfCanvas.width = viewport.width;
         pdfCanvas.height = viewport.height;
-        pdfCanvas.style.width = `${viewport.width}px`;
-        pdfCanvas.style.height = `${viewport.height}px`;
+        pdfCanvas.width = viewport.width;
         
-        drawCanvas.width = viewport.width;
         drawCanvas.height = viewport.height;
-        drawCanvas.style.width = `${viewport.width}px`;
-        drawCanvas.style.height = `${viewport.height}px`;
+        drawCanvas.width = viewport.width;
         
-        activeCanvas.width = viewport.width;
         activeCanvas.height = viewport.height;
-        activeCanvas.style.width = `${viewport.width}px`;
-        activeCanvas.style.height = `${viewport.height}px`;
+        activeCanvas.width = viewport.width;
         
         const renderContext = {
             canvasContext: pdfCtx,
@@ -669,13 +664,8 @@ function renderPdfPage(num) {
             
             if (pageDrawings[num]) {
                 const img = new Image();
-                img.onload = () => {
-                    drawCtx.drawImage(img, 0, 0);
-                    undoHistory[num] = [drawCanvas.toDataURL("image/png")];
-                };
+                img.onload = () => drawCtx.drawImage(img, 0, 0);
                 img.src = pageDrawings[num];
-            } else {
-                undoHistory[num] = [drawCanvas.toDataURL("image/png")];
             }
             
             if (pageNumIsPending !== null) {
@@ -727,6 +717,15 @@ window.openPdfAnnotator = async function(pdfUrl) {
     const modalEl = document.getElementById('annotatorModal');
     const annotatorModal = bootstrap.Modal.getOrCreateInstance(modalEl);
 
+    // Bootstrap's modal transition isn't necessarily finished the instant
+    // show() returns. If the PDF library/file load quickly (e.g. cached),
+    // renderPdfPage() used to run mid-transition and measure the container
+    // before it had its final on-screen size — usually reading 0 or a stale
+    // width, which threw the "fit to screen" math off and made the page
+    // render hugely oversized on first open (mostly visible on phones,
+    // since desktop containers are wide enough that the miscalculation was
+    // less noticeable). Waiting for "shown.bs.modal" guarantees the layout
+    // is settled before we ever measure it.
     const modalShown = new Promise(resolve => {
         modalEl.addEventListener('shown.bs.modal', resolve, { once: true });
     });
