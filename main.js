@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KCPO PORTAL — APP ENGINE
- * Loaded as a module on every page: <script type="module" src="main.js?v=1.2"></script>
+ * Loaded dynamically via cache-buster script in HTML
  * ============================================================================
  */
 
@@ -194,6 +194,7 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
+        // FIXED: Switched d-none to d-block so errors are visible to the user
         box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
         box.textContent = msg; 
     }
@@ -222,6 +223,7 @@ function initAuth() {
 
     onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
+        
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -240,6 +242,7 @@ function initAuth() {
 
             const finalName = realName || user.email;
             sessionStorage.setItem("kcpo_name", finalName);
+
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
             
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
@@ -254,6 +257,7 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
+            
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
@@ -278,7 +282,9 @@ function initAuth() {
                 const password = document.getElementById("signInPassword").value;
                 await signInWithEmailAndPassword(auth, email, password);
                 window.location.reload();
-            } catch (err) { showAuthAlert(err.message); }
+            } catch (err) { 
+                showAuthAlert(err.message); 
+            }
         });
     }
 
@@ -292,11 +298,18 @@ function initAuth() {
                 const name = document.getElementById("signUpName").value;
                 
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
+                
                 await setDoc(doc(db, "users", cred.user.uid), {
-                    name: name, email: email, role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member", createdAt: serverTimestamp()
+                    name: name,
+                    email: email,
+                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
+                    createdAt: serverTimestamp()
                 });
+                
                 window.location.reload();
-            } catch (err) { showAuthAlert(err.message); }
+            } catch (err) { 
+                showAuthAlert(err.message); 
+            }
         });
     }
 }
@@ -330,8 +343,20 @@ const IMAGE_VIEWER_HTML = `
 function injectImageViewer() {
     if (!document.getElementById("imageViewerModal")) {
         document.body.insertAdjacentHTML("beforeend", IMAGE_VIEWER_HTML);
-        document.getElementById('btnViewerPrev').addEventListener('click', () => { if (currentImageIndex > 0) { currentImageIndex--; updateViewerImage(); } });
-        document.getElementById('btnViewerNext').addEventListener('click', () => { if (currentImageIndex < currentGallery.length - 1) { currentImageIndex++; updateViewerImage(); } });
+        
+        document.getElementById('btnViewerPrev').addEventListener('click', () => {
+            if (currentImageIndex > 0) {
+                currentImageIndex--;
+                updateViewerImage();
+            }
+        });
+        
+        document.getElementById('btnViewerNext').addEventListener('click', () => {
+            if (currentImageIndex < currentGallery.length - 1) {
+                currentImageIndex++;
+                updateViewerImage();
+            }
+        });
     }
 }
 
@@ -340,7 +365,6 @@ window.zoomImageViewer = function(delta) {
     if (imgViewerScale < 0.1) imgViewerScale = 0.1;
     if (imgViewerScale > 4.0) imgViewerScale = 4.0;
     
-    // Using CSS width resizing to enable native scrolling
     const targetImg = document.getElementById('viewerImageTarget');
     targetImg.style.width = (imgViewerScale * 100) + '%';
     targetImg.style.height = "auto";
@@ -358,15 +382,19 @@ window.downloadViewerImage = async function() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-    } catch (err) { console.error("Download failed", err); }
+    } catch (err) {
+        console.error("Download failed", err);
+    }
 };
 
 window.updateViewerImage = function() {
     if (!currentGallery || currentGallery.length === 0) return;
+    
     imgViewerScale = 1.0;
     const targetImg = document.getElementById('viewerImageTarget');
     targetImg.style.width = '100%';
     targetImg.src = currentGallery[currentImageIndex];
+    
     document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
     document.getElementById('btnViewerNext').style.display = currentImageIndex < currentGallery.length - 1 ? 'block' : 'none';
 };
@@ -407,7 +435,6 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <!-- Restored native scrolling and correct layout flow -->
             <div class="modal-body p-0" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
                 <div id="pdfCanvasWrapper" style="display: inline-block; position: relative; margin: 1rem auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
@@ -478,7 +505,6 @@ async function loadPDFJSLibrary() {
     });
 }
 
-// Resizes physical dimensions for native scrolling instead of using CSS transforms
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
     if (pdfCssScale < 0.2) pdfCssScale = 0.2;
@@ -518,7 +544,6 @@ window.setPdfTool = function(tool) {
     }
 }
 
-// Removed complex DPR scaling to restore perfect 1:1 finger tracking
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
@@ -544,7 +569,7 @@ function startDrawing(e) {
     } else if (currentTool === 'highlighter') {
         activeCtx.globalCompositeOperation = 'multiply';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 12; // Thinned out highlighter
+        activeCtx.lineWidth = 12; 
         activeCtx.globalAlpha = 0.3; 
     }
 }
@@ -618,7 +643,6 @@ function saveCurrentPageDrawings() {
     }
 }
 
-// Universal function to set canvas HTML sizes perfectly matching aspect ratios
 function setupCanvasDimensions() {
     const wrapper = document.getElementById('pdfCanvasWrapper');
     wrapper.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
@@ -821,7 +845,6 @@ async function processAndSaveAnnotations() {
                 await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
             }
             
-            // Render the final drawn layer
             const annImg = new Image();
             await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[num]; });
             offCtx.drawImage(annImg, 0, 0, w, h);
@@ -1601,17 +1624,16 @@ async function initMemberDashboard() {
 }
 
 // ----------------------------------------------------------------------------
-// BOOT
+// BOOT SEQUENCE
+// Modules automatically defer execution until the HTML is parsed.
 // ----------------------------------------------------------------------------
-document.addEventListener("DOMContentLoaded", () => {
-    initTheme(); 
-    markActiveNavLink(); 
-    injectAuthModal(); 
-    injectImageViewer(); 
-    initAuth();
-    populateDynamicMonths(); 
-    initRegistrationForm(); 
-    initMasterclasses(); 
-    initAdminDashboard(); 
-    initMemberDashboard();
-});
+initTheme(); 
+markActiveNavLink(); 
+injectAuthModal(); 
+injectImageViewer(); 
+initAuth();
+populateDynamicMonths(); 
+initRegistrationForm(); 
+initMasterclasses(); 
+initAdminDashboard(); 
+initMemberDashboard();
