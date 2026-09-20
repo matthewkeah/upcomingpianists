@@ -644,35 +644,47 @@ function renderPdfPage(num) {
         
         // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
-        
-        const viewport = page.getViewport({ scale: fitScale });
-        
-        pdfCanvas.height = viewport.height;
-        pdfCanvas.width = viewport.width;
-        
-        drawCanvas.height = viewport.height;
-        drawCanvas.width = viewport.width;
-        
-        activeCanvas.height = viewport.height;
-        activeCanvas.width = viewport.width;
 
-        // Belt-and-suspenders, the same trick that makes the img-fluid image
-        // viewer always behave: cap the on-screen (CSS) size directly, so
-        // even if the fit-scale math above is ever wrong for some page,
-        // the canvas can never physically overflow the screen — worst case
-        // it looks a touch soft instead of spilling off the edges. This is
-        // purely visual; the pointer-to-canvas coordinate mapping in
-        // startDrawing()/draw() already converts using the actual on-screen
-        // rect, so annotations still land in the right place at any zoom.
-        const displayCapPx = Math.max(window.innerWidth - 32, 200);
+        // This is the size the page actually appears at on screen.
+        const cssViewport = page.getViewport({ scale: fitScale });
+
+        // Render the raster buffer at native pixel density (retina etc.) so
+        // it stays crisp, while the CSS size above keeps it fit-to-screen.
+        // Rendering 1 buffer pixel per CSS pixel — what the previous
+        // version did — looks fine on standard-DPI screens but blurry on
+        // any phone with devicePixelRatio 2 or 3 (i.e. most of them),
+        // because the browser has to stretch that low-res buffer across
+        // 2-3x as many physical pixels. Capped at 3x so a very high-DPR
+        // device doesn't blow up canvas memory unnecessarily.
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const renderViewport = page.getViewport({ scale: fitScale * dpr });
+
+        pdfCanvas.width = renderViewport.width;
+        pdfCanvas.height = renderViewport.height;
+        pdfCanvas.style.width = cssViewport.width + 'px';
+        pdfCanvas.style.height = cssViewport.height + 'px';
+
+        drawCanvas.width = renderViewport.width;
+        drawCanvas.height = renderViewport.height;
+        drawCanvas.style.width = cssViewport.width + 'px';
+        drawCanvas.style.height = cssViewport.height + 'px';
+
+        activeCanvas.width = renderViewport.width;
+        activeCanvas.height = renderViewport.height;
+        activeCanvas.style.width = cssViewport.width + 'px';
+        activeCanvas.style.height = cssViewport.height + 'px';
+
+        // Safety net still in place: the CSS size above is always derived
+        // from the same clamped fitScale used for the fit-to-screen math,
+        // so it can't overflow the screen — this max-width is just extra
+        // insurance and never actually triggers in the normal case.
         [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
-            c.style.maxWidth = displayCapPx + 'px';
-            c.style.height = 'auto';
+            c.style.maxWidth = '100%';
         });
         
         const renderContext = {
             canvasContext: pdfCtx,
-            viewport: viewport
+            viewport: renderViewport
         };
         
         page.render(renderContext).promise.then(() => {
