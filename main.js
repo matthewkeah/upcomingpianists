@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KCPO PORTAL — APP ENGINE
- * Loaded as a module on every page: <script type="module" src="main.js?v=1.1"></script>
+ * Loaded as a module on every page: <script type="module" src="main.js?v=1.2"></script>
  * ============================================================================
  */
 
@@ -194,7 +194,7 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
-        box.className = `alert alert-${type} mt-3 mb-0 d-none small py-2`; 
+        box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
         box.textContent = msg; 
     }
 }
@@ -222,7 +222,6 @@ function initAuth() {
 
     onAuthStateChanged(auth, async (user) => {
         if (!navBtn) return;
-        
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -241,7 +240,6 @@ function initAuth() {
 
             const finalName = realName || user.email;
             sessionStorage.setItem("kcpo_name", finalName);
-
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
             
             navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
@@ -256,7 +254,6 @@ function initAuth() {
             navBtn.parentElement.parentElement.appendChild(li);
 
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
-            
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
@@ -281,9 +278,7 @@ function initAuth() {
                 const password = document.getElementById("signInPassword").value;
                 await signInWithEmailAndPassword(auth, email, password);
                 window.location.reload();
-            } catch (err) { 
-                showAuthAlert(err.message); 
-            }
+            } catch (err) { showAuthAlert(err.message); }
         });
     }
 
@@ -297,18 +292,11 @@ function initAuth() {
                 const name = document.getElementById("signUpName").value;
                 
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
-                
                 await setDoc(doc(db, "users", cred.user.uid), {
-                    name: name,
-                    email: email,
-                    role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member",
-                    createdAt: serverTimestamp()
+                    name: name, email: email, role: ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "member", createdAt: serverTimestamp()
                 });
-                
                 window.location.reload();
-            } catch (err) { 
-                showAuthAlert(err.message); 
-            }
+            } catch (err) { showAuthAlert(err.message); }
         });
     }
 }
@@ -332,7 +320,7 @@ const IMAGE_VIEWER_HTML = `
             </div>
             <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh;">
                 <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-fixed top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
-                <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: transform 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
+                <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: width 0.2s ease, height 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
                 <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-fixed top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
             </div>
         </div>
@@ -342,20 +330,8 @@ const IMAGE_VIEWER_HTML = `
 function injectImageViewer() {
     if (!document.getElementById("imageViewerModal")) {
         document.body.insertAdjacentHTML("beforeend", IMAGE_VIEWER_HTML);
-        
-        document.getElementById('btnViewerPrev').addEventListener('click', () => {
-            if (currentImageIndex > 0) {
-                currentImageIndex--;
-                updateViewerImage();
-            }
-        });
-        
-        document.getElementById('btnViewerNext').addEventListener('click', () => {
-            if (currentImageIndex < currentGallery.length - 1) {
-                currentImageIndex++;
-                updateViewerImage();
-            }
-        });
+        document.getElementById('btnViewerPrev').addEventListener('click', () => { if (currentImageIndex > 0) { currentImageIndex--; updateViewerImage(); } });
+        document.getElementById('btnViewerNext').addEventListener('click', () => { if (currentImageIndex < currentGallery.length - 1) { currentImageIndex++; updateViewerImage(); } });
     }
 }
 
@@ -363,7 +339,11 @@ window.zoomImageViewer = function(delta) {
     imgViewerScale += delta;
     if (imgViewerScale < 0.1) imgViewerScale = 0.1;
     if (imgViewerScale > 4.0) imgViewerScale = 4.0;
-    document.getElementById('viewerImageTarget').style.transform = `scale(${imgViewerScale})`;
+    
+    // Using CSS width resizing to enable native scrolling
+    const targetImg = document.getElementById('viewerImageTarget');
+    targetImg.style.width = (imgViewerScale * 100) + '%';
+    targetImg.style.height = "auto";
 };
 
 window.downloadViewerImage = async function() {
@@ -378,19 +358,15 @@ window.downloadViewerImage = async function() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-    } catch (err) {
-        console.error("Download failed", err);
-    }
+    } catch (err) { console.error("Download failed", err); }
 };
 
 window.updateViewerImage = function() {
     if (!currentGallery || currentGallery.length === 0) return;
-    
     imgViewerScale = 1.0;
     const targetImg = document.getElementById('viewerImageTarget');
-    targetImg.style.transform = `scale(1.0)`;
+    targetImg.style.width = '100%';
     targetImg.src = currentGallery[currentImageIndex];
-    
     document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
     document.getElementById('btnViewerNext').style.display = currentImageIndex < currentGallery.length - 1 ? 'block' : 'none';
 };
@@ -431,13 +407,12 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <!-- Overflow auto allows native browser scrollbars to handle panning when zoomed -->
-            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
-                <!-- Replaced transform scaling with explicit width/height to fix clipping -->
-                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                    <canvas id="pdfRenderCanvas" style="display: block; background: white; width: 100%; height: 100%;"></canvas>
-                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block; width: 100%; height: 100%;"></canvas>
-                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block; width: 100%; height: 100%;"></canvas>
+            <!-- Restored native scrolling and correct layout flow -->
+            <div class="modal-body p-0" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
+                <div id="pdfCanvasWrapper" style="display: inline-block; position: relative; margin: 1rem auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
+                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; display: block;"></canvas>
+                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; display: block;"></canvas>
                 </div>
             </div>
         </div>
@@ -454,7 +429,7 @@ window.baseWrapperWidth = 0;
 window.baseWrapperHeight = 0;
 
 window.isImageAnnotator = false;
-window.currentAnnotatorMediaUrl = null;
+window.imagePageUrls = [];
 let pageFitScales = {}; 
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
@@ -491,35 +466,41 @@ function injectPdfModal() {
 
 async function loadPDFJSLibrary() {
     if (window.pdfjsLib) return window.pdfjsLib;
-    
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-        
         script.onload = () => {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
             resolve(window.pdfjsLib);
         };
-        
         script.onerror = reject;
         document.head.appendChild(script);
     });
 }
 
+// Resizes physical dimensions for native scrolling instead of using CSS transforms
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
     if (pdfCssScale < 0.2) pdfCssScale = 0.2;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
     
-    // Explicitly resizing the wrapper guarantees the browser's overflow scrollbars react properly
+    const w = window.baseWrapperWidth * pdfCssScale;
+    const h = window.baseWrapperHeight * pdfCssScale;
+    
     const wrapper = document.getElementById('pdfCanvasWrapper');
-    wrapper.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
-    wrapper.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
+    wrapper.style.width = w + 'px';
+    wrapper.style.height = h + 'px';
+    
+    pdfCanvas.style.width = w + 'px';
+    pdfCanvas.style.height = h + 'px';
+    drawCanvas.style.width = w + 'px';
+    drawCanvas.style.height = h + 'px';
+    activeCanvas.style.width = w + 'px';
+    activeCanvas.style.height = h + 'px';
 };
 
 window.setPdfTool = function(tool) {
     currentTool = tool;
-    
     document.getElementById('toolMove').classList.remove('active');
     document.getElementById('toolPen').classList.remove('active');
     document.getElementById('toolHighlight').classList.remove('active');
@@ -537,16 +518,14 @@ window.setPdfTool = function(tool) {
     }
 }
 
+// Removed complex DPR scaling to restore perfect 1:1 finger tracking
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
     
-    const dpr = window.devicePixelRatio || 1;
     const rect = drawCanvas.getBoundingClientRect();
-    
-    // Scale logically connects touch point to backing store regardless of CSS zoom width
-    const scaleX = drawCanvas.width / dpr / rect.width; 
-    const scaleY = drawCanvas.height / dpr / rect.height; 
+    const scaleX = window.baseWrapperWidth / rect.width; 
+    const scaleY = window.baseWrapperHeight / rect.height; 
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
@@ -555,7 +534,6 @@ function startDrawing(e) {
     
     activeCtx.lineCap = 'round';
     activeCtx.lineJoin = 'round';
-    
     const activeColor = document.getElementById('pdfColorPicker').value || '#ff0000';
     
     if (currentTool === 'pen') {
@@ -564,9 +542,9 @@ function startDrawing(e) {
         activeCtx.lineWidth = 3; 
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.globalCompositeOperation = 'multiply'; // Professional physical blending
+        activeCtx.globalCompositeOperation = 'multiply';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 12; // Reduced thickness per user request
+        activeCtx.lineWidth = 12; // Thinned out highlighter
         activeCtx.globalAlpha = 0.3; 
     }
 }
@@ -576,17 +554,16 @@ function draw(e) {
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
-    const dpr = window.devicePixelRatio || 1;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = drawCanvas.width / dpr / rect.width;
-    const scaleY = drawCanvas.height / dpr / rect.height;
+    const scaleX = window.baseWrapperWidth / rect.width;
+    const scaleY = window.baseWrapperHeight / rect.height;
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
-    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
+    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
     
@@ -602,8 +579,7 @@ function stopDrawing() {
     
     isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
-    const dpr = window.devicePixelRatio || 1;
-    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
+    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
     currentStroke = [];
     
     if (!undoHistory[pageNum]) {
@@ -618,12 +594,11 @@ window.undoPdfStroke = function() {
         undoHistory[pageNum].pop(); 
         const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
         
-        const dpr = window.devicePixelRatio || 1;
-        drawCtx.clearRect(0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
+        drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
         
         const img = new Image();
         img.onload = () => {
-            drawCtx.drawImage(img, 0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
+            drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
         };
         img.src = targetState;
         
@@ -643,125 +618,102 @@ function saveCurrentPageDrawings() {
     }
 }
 
-// Adapts the canvas scaling logic for pure photos
-function renderImagePage(img) {
-    const container = document.getElementById('pdfContainer');
-    const measuredWidth = container ? container.clientWidth : 0;
-    const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
-    
-    const fitScale = Math.min(availableWidth / img.width, 0.9); 
-    pageFitScales[1] = fitScale; 
-    
-    window.baseWrapperWidth = img.width * fitScale;
-    window.baseWrapperHeight = img.height * fitScale;
-    
+// Universal function to set canvas HTML sizes perfectly matching aspect ratios
+function setupCanvasDimensions() {
     const wrapper = document.getElementById('pdfCanvasWrapper');
-    wrapper.style.width = window.baseWrapperWidth + 'px';
-    wrapper.style.height = window.baseWrapperHeight + 'px';
+    wrapper.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
+    wrapper.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
     
     const dpr = window.devicePixelRatio || 1;
-    
-    pdfCanvas.width = window.baseWrapperWidth * dpr;
-    pdfCanvas.height = window.baseWrapperHeight * dpr;
-    drawCanvas.width = window.baseWrapperWidth * dpr;
-    drawCanvas.height = window.baseWrapperHeight * dpr;
-    activeCanvas.width = window.baseWrapperWidth * dpr;
-    activeCanvas.height = window.baseWrapperHeight * dpr;
+    [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
+        c.width = window.baseWrapperWidth * dpr;
+        c.height = window.baseWrapperHeight * dpr;
+        c.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
+        c.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
+    });
     
     pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function finalizeRenderStep(num) {
+    pageIsRendering = false;
     
     drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
     activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
     
-    // Draw the actual image
-    pdfCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
-    
-    if (!pageDrawings[1]) {
-        undoHistory[1] = [drawCanvas.toDataURL("image/png")];
+    if (pageDrawings[num]) {
+        const img = new Image();
+        img.onload = () => {
+            drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+        };
+        img.src = pageDrawings[num];
+    } else {
+        undoHistory[num] = [drawCanvas.toDataURL("image/png")];
     }
     
-    document.getElementById('pdfPageIndicator').textContent = `Photo Attachment`;
-    document.getElementById('btnPdfPrev').style.display = 'none';
-    document.getElementById('btnPdfNext').style.display = 'none';
+    const totalPages = window.isImageAnnotator ? window.imagePageUrls.length : pdfDoc.numPages;
+    document.getElementById('pdfPageIndicator').textContent = `Page ${num} of ${totalPages}`;
+    document.getElementById('btnPdfPrev').disabled = (num <= 1);
+    document.getElementById('btnPdfNext').disabled = (num >= totalPages);
+    
+    if (pageNumIsPending !== null) {
+        const n = pageNumIsPending;
+        pageNumIsPending = null;
+        renderPage(n);
+    }
 }
 
-function renderPdfPage(num) {
+function renderPage(num) {
     pageIsRendering = true;
     
-    document.getElementById('btnPdfPrev').style.display = 'block';
-    document.getElementById('btnPdfNext').style.display = 'block';
-    
-    pdfDoc.getPage(num).then(page => {
-        const baseViewport = page.getViewport({ scale: 1.0 });
-        
-        const container = document.getElementById('pdfContainer');
-        const measuredWidth = container ? container.clientWidth : 0;
-        const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
-        
-        const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
-        pageFitScales[num] = fitScale; // Store exact scale for synchronization
-        
-        const viewport = page.getViewport({ scale: fitScale });
-        
-        window.baseWrapperWidth = viewport.width;
-        window.baseWrapperHeight = viewport.height;
-        
-        const wrapper = document.getElementById('pdfCanvasWrapper');
-        wrapper.style.width = window.baseWrapperWidth + 'px';
-        wrapper.style.height = window.baseWrapperHeight + 'px';
-        
-        const dpr = window.devicePixelRatio || 1;
-        
-        pdfCanvas.width = viewport.width * dpr;
-        pdfCanvas.height = viewport.height * dpr;
-        drawCanvas.width = viewport.width * dpr;
-        drawCanvas.height = viewport.height * dpr;
-        activeCanvas.width = viewport.width * dpr;
-        activeCanvas.height = viewport.height * dpr;
-        
-        pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        
-        const renderContext = {
-            canvasContext: pdfCtx,
-            viewport: viewport,
+    if (window.isImageAnnotator) {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => {
+            const container = document.getElementById('pdfContainer');
+            const measuredWidth = container ? container.clientWidth : 0;
+            const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
+            
+            const fitScale = Math.min(availableWidth / img.width, 1.0); 
+            pageFitScales[num] = fitScale; 
+            window.baseWrapperWidth = img.width * fitScale;
+            window.baseWrapperHeight = img.height * fitScale;
+            
+            setupCanvasDimensions();
+            pdfCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            finalizeRenderStep(num);
         };
-        
-        page.render(renderContext).promise.then(() => {
-            pageIsRendering = false;
+        img.src = window.imagePageUrls[num - 1];
+    } else {
+        pdfDoc.getPage(num).then(page => {
+            const baseViewport = page.getViewport({ scale: 1.0 });
             
-            drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
-            activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            const container = document.getElementById('pdfContainer');
+            const measuredWidth = container ? container.clientWidth : 0;
+            const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
             
-            if (pageDrawings[num]) {
-                const img = new Image();
-                img.onload = () => {
-                    drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
-                    undoHistory[num] = [drawCanvas.toDataURL("image/png")];
-                };
-                img.src = pageDrawings[num];
-            } else {
-                undoHistory[num] = [drawCanvas.toDataURL("image/png")];
-            }
+            const fitScale = Math.min(availableWidth / baseViewport.width, 1.0); 
+            pageFitScales[num] = fitScale; 
             
-            if (pageNumIsPending !== null) {
-                renderPdfPage(pageNumIsPending);
-                pageNumIsPending = null;
-            }
+            const viewport = page.getViewport({ scale: fitScale });
+            window.baseWrapperWidth = viewport.width;
+            window.baseWrapperHeight = viewport.height;
+            
+            setupCanvasDimensions();
+            
+            const renderContext = { canvasContext: pdfCtx, viewport: viewport };
+            page.render(renderContext).promise.then(() => finalizeRenderStep(num));
         });
-    });
-    
-    document.getElementById('pdfPageIndicator').textContent = `Page ${num} of ${pdfDoc.numPages}`;
+    }
 }
 
 function queueRenderPage(num) {
     if (pageIsRendering) {
         pageNumIsPending = num;
     } else {
-        renderPdfPage(num);
+        renderPage(num);
     }
 }
 
@@ -773,19 +725,21 @@ function onPrevPage() {
 }
 
 function onNextPage() {
-    if (pageNum >= pdfDoc.numPages) return;
+    const totalPages = window.isImageAnnotator ? window.imagePageUrls.length : pdfDoc.numPages;
+    if (pageNum >= totalPages) return;
     saveCurrentPageDrawings();
     pageNum++;
     queueRenderPage(pageNum);
 }
 
-window.openMediaAnnotator = async function(mediaUrl, mediaType) {
-    if (!mediaUrl) return alert("Media file not found.");
+window.openMediaAnnotator = async function(mediaUrlsString, mediaType) {
+    if (!mediaUrlsString) return alert("Media file not found.");
     
     injectPdfModal();
     
     window.isImageAnnotator = (mediaType === 'image');
-    window.currentAnnotatorMediaUrl = mediaUrl;
+    window.imagePageUrls = window.isImageAnnotator ? mediaUrlsString.split(',') : [];
+    
     pageDrawings = {};
     pageFitScales = {};
     pagesEdited.clear();
@@ -793,9 +747,7 @@ window.openMediaAnnotator = async function(mediaUrl, mediaType) {
     pageNum = 1;
     pdfCssScale = 1.0;
     
-    const wrapper = document.getElementById('pdfCanvasWrapper');
-    wrapper.style.width = "auto";
-    wrapper.style.height = "auto";
+    document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
     setPdfTool('none');
     
     const modalEl = document.getElementById('annotatorModal');
@@ -812,18 +764,12 @@ window.openMediaAnnotator = async function(mediaUrl, mediaType) {
     try {
         await modalShown;
         
-        if (window.isImageAnnotator) {
-            const img = new Image();
-            img.crossOrigin = "Anonymous"; // Prevents Cloudinary from tainting the canvas export
-            img.onload = () => renderImagePage(img);
-            img.onerror = () => alert("Failed to load photo.");
-            img.src = mediaUrl;
-        } else {
+        if (!window.isImageAnnotator) {
             const pdfjs = await loadPDFJSLibrary();
-            const loadingTask = pdfjs.getDocument(mediaUrl);
+            const loadingTask = pdfjs.getDocument(mediaUrlsString);
             pdfDoc = await loadingTask.promise;
-            renderPdfPage(pageNum);
         }
+        renderPage(pageNum);
     } catch (err) {
         console.error("Media Load Error:", err);
         alert("Failed to load viewer.");
@@ -840,81 +786,55 @@ async function processAndSaveAnnotations() {
 
     const btn = document.getElementById('btnPdfDone');
     const spinner = document.getElementById('pdfSpinner');
-    
-    btn.disabled = true;
-    spinner.classList.remove('d-none');
+    btn.disabled = true; spinner.classList.remove('d-none');
     
     try {
         window.pendingAttachments = [];
+        const dpr = window.devicePixelRatio || 1;
         
-        // Handle Photo Output
-        if (window.isImageAnnotator) {
-            const exactRenderScale = pageFitScales[1] || 1.0;
-            const dpr = window.devicePixelRatio || 1;
+        for (let num of pagesEdited) {
+            let w, h;
+            const offCanvas = document.createElement('canvas');
+            const offCtx = offCanvas.getContext('2d');
             
-            const offScreenCanvas = document.createElement('canvas');
-            offScreenCanvas.width = window.baseWrapperWidth * dpr;
-            offScreenCanvas.height = window.baseWrapperHeight * dpr;
-            const offCtx = offScreenCanvas.getContext('2d');
-            offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (window.isImageAnnotator) {
+                const srcUrl = window.imagePageUrls[num - 1];
+                const baseImg = new Image();
+                baseImg.crossOrigin = "Anonymous";
+                await new Promise(r => { baseImg.onload = r; baseImg.src = srcUrl; });
+                
+                const fitScale = pageFitScales[num] || 1.0;
+                w = baseImg.width * fitScale;
+                h = baseImg.height * fitScale;
+                
+                offCanvas.width = w * dpr; offCanvas.height = h * dpr;
+                offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                offCtx.drawImage(baseImg, 0, 0, w, h);
+            } else {
+                const page = await pdfDoc.getPage(num);
+                const fitScale = pageFitScales[num] || 1.0;
+                const viewport = page.getViewport({ scale: fitScale });
+                w = viewport.width; h = viewport.height;
+                
+                offCanvas.width = w * dpr; offCanvas.height = h * dpr;
+                offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
+            }
             
-            const baseImg = new Image();
-            baseImg.crossOrigin = "Anonymous";
-            await new Promise(r => { baseImg.onload = r; baseImg.src = window.currentAnnotatorMediaUrl; });
-            offCtx.drawImage(baseImg, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
-            
+            // Render the final drawn layer
             const annImg = new Image();
-            await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[1]; });
-            offCtx.drawImage(annImg, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[num]; });
+            offCtx.drawImage(annImg, 0, 0, w, h);
             
             const formData = new FormData();
-            formData.append("file", offScreenCanvas.toDataURL("image/png"));
+            formData.append("file", offCanvas.toDataURL("image/png"));
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
             const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
             const cloudinaryData = await cloudinaryRes.json();
             
             if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Upload failed.");
-            
             window.pendingAttachments.push({ url: cloudinaryData.secure_url, type: 'image' });
-            
-        } else {
-            // Handle PDF Output Array
-            for (let num of pagesEdited) {
-                const page = await pdfDoc.getPage(num);
-                const exactRenderScale = pageFitScales[num] || 1.0;
-                const viewport = page.getViewport({ scale: exactRenderScale });
-                const dpr = window.devicePixelRatio || 1;
-                
-                const offScreenCanvas = document.createElement('canvas');
-                offScreenCanvas.width = viewport.width * dpr;
-                offScreenCanvas.height = viewport.height * dpr;
-                const offCtx = offScreenCanvas.getContext('2d');
-                
-                await page.render({ 
-                    canvasContext: offCtx, 
-                    viewport: viewport,
-                    transform: [dpr, 0, 0, dpr, 0, 0]
-                }).promise;
-                
-                const img = new Image();
-                await new Promise((resolve) => {
-                    img.onload = resolve;
-                    img.src = pageDrawings[num];
-                });
-                offCtx.drawImage(img, 0, 0, viewport.width, viewport.height);
-                
-                const formData = new FormData();
-                formData.append("file", offScreenCanvas.toDataURL("image/png"));
-                formData.append("upload_preset", CLOUDINARY_PRESET);
-                
-                const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
-                const cloudinaryData = await cloudinaryRes.json();
-                
-                if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Upload failed.");
-                
-                window.pendingAttachments.push({ url: cloudinaryData.secure_url, type: 'image' });
-            }
         }
         
         const statusMsg = document.getElementById("chatStatusMsg");
@@ -922,15 +842,13 @@ async function processAndSaveAnnotations() {
             statusMsg.className = "small mt-2 text-center text-success";
             statusMsg.textContent = `${window.pendingAttachments.length} annotated page(s) attached. Add text and send!`;
         }
-        
         bootstrap.Modal.getInstance(document.getElementById('annotatorModal')).hide();
         
     } catch (error) {
         console.error("Failed to process annotations:", error);
         alert("Failed to save edits.");
     } finally {
-        btn.disabled = false;
-        spinner.classList.add('d-none');
+        btn.disabled = false; spinner.classList.add('d-none');
     }
 }
 
@@ -1020,9 +938,10 @@ window.viewUserParticipation = async function(email, name) {
         if(scSnap.empty) html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No scores uploaded yet.</li>`;
         scSnap.forEach(d => {
             const s = d.data();
+            const viewUrl = s.pdfUrl ? s.pdfUrl.split(',')[0] : '#';
             html += `<li class="list-group-item bg-transparent text-light px-0 border-line d-flex justify-content-between">
                 <span>${s.pieceTitle} <span class="badge badge-kcpo ms-2">${s.sessionMonth}</span></span>
-                <a href="${s.pdfUrl}" target="_blank" class="text-info small">View File</a>
+                <a href="${viewUrl}" target="_blank" class="text-info small">View Media</a>
             </li>`;
         });
         
@@ -1110,7 +1029,6 @@ async function loadAdminUsers() {
             `;
         });
     } catch (error) {
-        console.error("Error fetching users:", error);
         userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory.</td></tr>`;
     }
 }
@@ -1135,7 +1053,7 @@ window.deleteUserRecord = async function(userId, userEmail) {
     try {
         const scQ = query(collection(db, "scores"), where("uploadedByUid", "==", userId));
         const scSnap = await getDocs(scQ);
-        scSnap.forEach(d => window.deleteScore(d.id, true)); // Triggers cascading score cleanup
+        scSnap.forEach(d => window.deleteScore(d.id, true)); 
         
         const fbQ = query(collection(db, "score_feedback"), where("senderEmail", "==", userEmail));
         const fbSnap = await getDocs(fbQ);
@@ -1165,71 +1083,57 @@ function initRegistrationForm() {
             return;
         }
 
-        if (!form.checkValidity()) { 
-            form.classList.add("was-validated"); 
-            return; 
-        }
+        if (!form.checkValidity()) { form.classList.add("was-validated"); return; }
 
         const btn = form.querySelector("button[type=submit]");
         const status = document.getElementById("registrationStatus");
-        const file = document.getElementById("actionPdfFile").files[0];
+        const fileInput = document.getElementById("actionPdfFile");
         const month = document.getElementById("sessionMonth").value;
         const title = document.getElementById("repertoire").value.trim();
 
-        // Capture the explicitly typed form fields
         const fName = document.getElementById("firstName")?.value.trim() || "";
         const lName = document.getElementById("lastName")?.value.trim() || "";
         const formEmail = document.getElementById("email")?.value.trim() || auth.currentUser.email;
         const isHybrid = document.getElementById("hybridCheck")?.checked || false;
-        
-        // Combine names, falling back to session memory if left blank
         const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcpo_name") || "Member";
 
-        btn.disabled = true; 
-        btn.textContent = "Uploading Media...";
-        status.classList.add("d-none");
+        btn.disabled = true; btn.textContent = "Uploading Media..."; status.classList.add("d-none");
 
         try {
-            const formData = new FormData();
-            formData.append("file", file);
-            formData.append("upload_preset", CLOUDINARY_PRESET);
+            const uploadedMedia = await uploadMediaArray(fileInput.files);
             
-            const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
-            const data = await res.json();
-            
-            if (!res.ok) {
-                throw new Error(data.error?.message || "Cloudinary upload failed.");
+            let fileType = 'image';
+            for (let i = 0; i < fileInput.files.length; i++) {
+                if (fileInput.files[i].type.includes('pdf')) fileType = 'pdf';
             }
-
-            const fileType = file.type.startsWith('image/') ? 'image' : 'pdf';
+            
+            const joinedUrls = uploadedMedia.map(m => m.url).join(',');
 
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
-                pdfUrl: data.secure_url,
-                mediaType: fileType,
-                fileName: file.name,
+                pdfUrl: joinedUrls,
+                mediaType: fileType, 
+                fileName: fileInput.files[0].name,
                 sessionMonth: month,
-                uploadedByEmail: formEmail, // Uses the explicitly typed email
-                uploadedByUid: auth.currentUser.uid, 
-                uploaderName: fullName, // Uses the explicitly typed name
-                isHybrid: isHybrid, // Logs their virtual attendance preference
+                uploadedByEmail: formEmail,
+                uploadedByUid: auth.currentUser.uid,
+                uploaderName: fullName, 
+                isHybrid: isHybrid,
                 createdAt: serverTimestamp()
             });
 
             status.className = "alert alert-success mt-3 d-block";
-            status.textContent = "Slot secured and media uploaded successfully!";
-            form.reset(); 
-            form.classList.remove("was-validated");
+            status.textContent = "Slot secured successfully!";
+            form.reset(); form.classList.remove("was-validated");
             
         } catch (err) {
-            status.className = "alert alert-danger mt-3 d-block";
-            status.textContent = err.message;
+            status.className = "alert alert-danger mt-3 d-block"; status.textContent = err.message;
         } finally {
-            btn.disabled = false; 
-            btn.textContent = "Submit Registration";
+            btn.disabled = false; btn.textContent = "Submit Registration";
         }
     });
 }
+
 function initMasterclasses() {
     const monthSelect = document.getElementById("repertoireMonthSelect");
     if (!monthSelect) return;
@@ -1309,9 +1213,8 @@ async function loadRepertoireForMonth(targetMonth) {
             const isOwner = auth.currentUser && auth.currentUser.uid === data.uploadedByUid;
             const allowDelete = isAdmin || (isOwner && targetMonth !== currentMonthString);
             const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recently";
-            
-            // Handles missing mediaTypes from earlier test submissions naturally
             const mediaTypeStr = data.mediaType || 'pdf'; 
+            const viewUrl = data.pdfUrl ? data.pdfUrl.split(',')[0] : '#';
 
             list.innerHTML += `
                 <div class="col-md-6 col-lg-4">
@@ -1323,7 +1226,7 @@ async function loadRepertoireForMonth(targetMonth) {
                         </p>
                         
                         <div class="mt-auto d-flex flex-column gap-2">
-                            <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View Media</a>
+                            <a href="${viewUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View Media</a>
                             <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${(data.uploaderName||"").replace(/'/g, "\\'")}', '${data.pdfUrl}', '${mediaTypeStr}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
@@ -1337,7 +1240,7 @@ async function loadRepertoireForMonth(targetMonth) {
     }
 }
 
-window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, mediaUrl, mediaType) {
+window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, mediaUrlsString, mediaType) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
     document.getElementById("currentChatScoreId").value = scoreId;
     document.getElementById("chatPieceTitle").value = title;
@@ -1356,8 +1259,7 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     }
     
     if (annotateBtn) {
-        // Now dynamically routes based on image vs pdf
-        annotateBtn.onclick = () => openMediaAnnotator(mediaUrl, mediaType);
+        annotateBtn.onclick = () => openMediaAnnotator(mediaUrlsString, mediaType);
     }
     
     window.pendingAttachments = [];
@@ -1653,28 +1555,26 @@ async function initMemberDashboard() {
                     const fileInput = document.getElementById("pdfFile");
                     const statusBox = document.getElementById("uploadStatusBox");
                     const submitBtn = uploadForm.querySelector("button[type=submit]");
-                    const file = fileInput.files[0];
 
-                    if (!file) return;
+                    if (fileInput.files.length === 0) return;
 
                     submitBtn.disabled = true; submitBtn.innerHTML = `Uploading...`; statusBox.classList.add("d-none");
 
                     try {
-                        const formData = new FormData();
-                        formData.append("file", file); 
-                        formData.append("upload_preset", CLOUDINARY_PRESET);
-                        const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
-                        const cloudinaryData = await cloudinaryRes.json();
+                        const uploadedMedia = await uploadMediaArray(fileInput.files);
                         
-                        if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
-
-                        const fileType = file.type.startsWith('image/') ? 'image' : 'pdf';
+                        let fileType = 'image';
+                        for (let i = 0; i < fileInput.files.length; i++) {
+                            if (fileInput.files[i].type.includes('pdf')) fileType = 'pdf';
+                        }
+                        
+                        const joinedUrls = uploadedMedia.map(m => m.url).join(',');
 
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
-                            pdfUrl: cloudinaryData.secure_url, 
-                            mediaType: fileType, // Automated tag
-                            fileName: file.name,
+                            pdfUrl: joinedUrls, 
+                            mediaType: fileType, 
+                            fileName: fileInput.files[0].name,
                             sessionMonth: monthInput.value,
                             uploadedByEmail: user.email, 
                             uploadedByUid: user.uid,
