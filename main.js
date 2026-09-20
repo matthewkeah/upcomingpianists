@@ -332,7 +332,7 @@ const IMAGE_VIEWER_HTML = `
                 <button type="button" class="btn btn-dark rounded-circle" onclick="downloadViewerImage()" style="opacity: 0.8;" title="Download"><i class="bi bi-download text-light"></i></button>
                 <button type="button" class="btn btn-dark rounded-circle" data-bs-dismiss="modal" aria-label="Close" style="opacity: 0.8;" title="Close"><i class="bi bi-x-lg text-light"></i></button>
             </div>
-            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh;">
+            <div class="modal-body text-center p-0 mt-2 position-relative" style="overflow: auto; max-height: 85vh; touch-action: pan-x pan-y;">
                 <button type="button" id="btnViewerPrev" class="btn btn-dark rounded-circle position-fixed top-50 start-0 translate-middle-y ms-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-left text-light fs-4"></i></button>
                 <img id="viewerImageTarget" src="" class="img-fluid rounded" style="transition: transform 0.2s ease; transform-origin: top center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" alt="Media">
                 <button type="button" id="btnViewerNext" class="btn btn-dark rounded-circle position-fixed top-50 end-0 translate-middle-y me-3" style="opacity: 0.8; z-index: 10;"><i class="bi bi-chevron-right text-light fs-4"></i></button>
@@ -363,7 +363,7 @@ function injectImageViewer() {
 
 window.zoomImageViewer = function(delta) {
     imgViewerScale += delta;
-    if (imgViewerScale < 0.5) imgViewerScale = 0.5;
+    if (imgViewerScale < 0.1) imgViewerScale = 0.1; // Extended floor for deep mobile zoom out
     if (imgViewerScale > 4.0) imgViewerScale = 4.0;
     document.getElementById('viewerImageTarget').style.transform = `scale(${imgViewerScale})`;
 };
@@ -433,7 +433,7 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
-            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
+            <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start; touch-action: pan-x pan-y;">
                 <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform-origin: top center; transition: transform 0.2s ease;">
                     <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                     <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
@@ -503,7 +503,7 @@ async function loadPDFJSLibrary() {
 
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.2) pdfCssScale = 0.2;
+    if (pdfCssScale < 0.05) pdfCssScale = 0.05; // Deep lower bound for flexible mobile zooming out
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
     document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
 };
@@ -626,15 +626,14 @@ function renderPdfPage(num) {
     pageIsRendering = true;
     
     pdfDoc.getPage(num).then(page => {
-        // Base viewport render at scale 1.0 to measure native document dimensions
         const baseViewport = page.getViewport({ scale: 1.0 });
         
-        // Dynamically compute fit-to-screen scale based on available container width
         const container = document.getElementById('pdfContainer');
-        const availableWidth = container ? container.clientWidth - 40 : 800; // 40px buffer
-        const fitScale = Math.min(availableWidth / baseViewport.width, 1.2); 
+        const availableWidth = container ? container.clientWidth - 40 : 800; 
         
-        // Apply fitScale to the active render resolution
+        // Flexible fit scale calculation without restrictive minimum caps
+        const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
+        
         const viewport = page.getViewport({ scale: fitScale });
         
         pdfCanvas.height = viewport.height;
