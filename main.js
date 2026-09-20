@@ -221,8 +221,8 @@ function initAuth() {
     const navBtn = document.getElementById("navAuthBtn");
 
     onAuthStateChanged(auth, async (user) => {
-        if (!navBtn) return;
-        
+        // We no longer abort the entire auth check if navBtn is missing.
+        // This ensures backend auth completes seamlessly on all pages.
         const existingLogout = document.getElementById("dynamicLogoutBtn");
         if (existingLogout) existingLogout.remove();
 
@@ -243,29 +243,33 @@ function initAuth() {
             sessionStorage.setItem("kcpo_name", finalName);
 
             const isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-            
-            navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
-            navBtn.className = "btn btn-gold btn-sm px-3";
-            navBtn.removeAttribute("data-bs-toggle");
-            navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
-
-            const li = document.createElement("li");
-            li.className = "nav-item ms-lg-2 my-2 my-lg-0";
-            li.id = "dynamicLogoutBtn";
-            li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
-            navBtn.parentElement.parentElement.appendChild(li);
-
             sessionStorage.setItem("kcpo_role", isAdmin ? "admin" : "member");
             
+            // Only attempt to manipulate the DOM button if it exists on this specific page
+            if (navBtn) {
+                navBtn.innerHTML = isAdmin ? `<i class="bi bi-shield-lock-fill me-1"></i> Admin` : `<i class="bi bi-person-check-fill me-1"></i> Inbox`;
+                navBtn.className = "btn btn-gold btn-sm px-3";
+                navBtn.removeAttribute("data-bs-toggle");
+                navBtn.onclick = () => window.location.href = isAdmin ? "admin.html" : "member.html";
+
+                const li = document.createElement("li");
+                li.className = "nav-item ms-lg-2 my-2 my-lg-0";
+                li.id = "dynamicLogoutBtn";
+                li.innerHTML = `<button class="btn btn-outline-danger btn-sm px-3" onclick="logoutUser()">Sign Out</button>`;
+                navBtn.parentElement.parentElement.appendChild(li);
+            }
+
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
 
         } else {
-            navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
-            navBtn.className = "btn btn-outline-gold btn-sm px-3";
-            navBtn.setAttribute("data-bs-toggle", "modal");
-            navBtn.setAttribute("data-bs-target", "#authModal");
-            navBtn.onclick = null;
+            if (navBtn) {
+                navBtn.innerHTML = `<i class="bi bi-person-circle me-1"></i> Sign In`;
+                navBtn.className = "btn btn-outline-gold btn-sm px-3";
+                navBtn.setAttribute("data-bs-toggle", "modal");
+                navBtn.setAttribute("data-bs-target", "#authModal");
+                navBtn.onclick = null;
+            }
 
             const feed = document.getElementById("communicationsFeed");
             if(feed) loadCommunicationsHub();
@@ -410,10 +414,8 @@ const PDF_MODAL_HTML = `
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
             
-            <!-- Robust Scrolling Container (Always allowed to scroll) -->
             <div class="modal-body p-4" id="pdfScrollArea" style="background: #222; height: calc(100vh - 110px); overflow: auto; text-align: center;">
                 <div id="pdfSizer" style="display: inline-block; position: relative; text-align: left; transition: width 0.2s, height 0.2s;">
-                    <!-- Explicitly removed touch-action: none from the background render canvas so 'Move' mode allows panning -->
                     <div id="pdfCanvasWrapper" style="transform-origin: top left; transition: transform 0.2s; position: absolute; top: 0; left: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                         <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
                         <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
@@ -462,7 +464,6 @@ function injectPdfModal() {
         activeCanvas = document.getElementById("pdfActiveStrokeCanvas");
         activeCtx = activeCanvas.getContext("2d", { willReadFrequently: true });
         
-        // Pointer events universally capture both mouse and native touch safely
         drawCanvas.addEventListener('pointerdown', startDrawing);
         drawCanvas.addEventListener('pointermove', draw);
         window.addEventListener('pointerup', stopDrawing);
@@ -501,7 +502,6 @@ window.zoomPdf = function(delta) {
     const scrollArea = document.getElementById('pdfScrollArea');
     let centerX = 0, centerY = 0;
     
-    // Mathematically calculates the exact center of your screen to prevent top-left zooming drift
     if (scrollArea) {
         centerX = scrollArea.scrollLeft + scrollArea.clientWidth / 2;
         centerY = scrollArea.scrollTop + scrollArea.clientHeight / 2;
@@ -516,7 +516,6 @@ window.zoomPdf = function(delta) {
     
     applyZoom();
     
-    // Instantly snaps the scrollbar back to your calculated center point
     if (scrollArea) {
         scrollArea.scrollLeft = (relX * pdfCssScale) - scrollArea.clientWidth / 2;
         scrollArea.scrollTop = (relY * pdfCssScale) - scrollArea.clientHeight / 2;
@@ -529,31 +528,41 @@ window.setPdfTool = function(tool) {
     document.getElementById('toolPen').classList.remove('active');
     document.getElementById('toolHighlight').classList.remove('active');
     
+    const scrollArea = document.getElementById('pdfScrollArea');
+    
     if (tool === 'none') {
         document.getElementById('toolMove').classList.add('active');
-        // Setting pointer-events to none lets your finger bypass the drawing layer and hit the scrolling engine
         drawCanvas.style.pointerEvents = 'none'; 
+        if (scrollArea) scrollArea.style.overflow = 'auto'; 
     } else {
         if (tool === 'pen') document.getElementById('toolPen').classList.add('active');
         else if (tool === 'highlighter') document.getElementById('toolHighlight').classList.add('active');
         
-        // Re-engaging pointer-events catches your finger so the drawing layer responds
         drawCanvas.style.pointerEvents = 'auto'; 
+        if (scrollArea) scrollArea.style.overflow = 'hidden'; 
     }
+}
+
+function getPointerCoords(e) {
+    if (e.touches && e.touches.length > 0) {
+        return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    }
+    return { clientX: e.clientX, clientY: e.clientY };
 }
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
     isDrawing = true;
     
-    const rect = drawCanvas.getBoundingClientRect();
+    if (e.cancelable) e.preventDefault(); 
     
-    // Perfect 1:1 mapping based solely on bounding dimensions. Eliminates all coordinate offset drift.
+    const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width; 
     const scaleY = drawCanvas.height / rect.height; 
     
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const coords = getPointerCoords(e);
+    const x = (coords.clientX - rect.left) * scaleX;
+    const y = (coords.clientY - rect.top) * scaleY;
     
     currentStroke = [{x, y}];
     
@@ -569,22 +578,23 @@ function startDrawing(e) {
     } else if (currentTool === 'highlighter') {
         activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 12; // Thinned to 12
+        activeCtx.lineWidth = 16; 
         activeCtx.globalAlpha = 0.3; 
     }
 }
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    e.preventDefault(); 
+    if (e.cancelable) e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
     const rect = drawCanvas.getBoundingClientRect();
     const scaleX = drawCanvas.width / rect.width;
     const scaleY = drawCanvas.height / rect.height;
     
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const coords = getPointerCoords(e);
+    const x = (coords.clientX - rect.left) * scaleX;
+    const y = (coords.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
@@ -1205,7 +1215,7 @@ async function loadRepertoireForMonth(targetMonth) {
         list.innerHTML = "";
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
-        const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
+        const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
         
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
