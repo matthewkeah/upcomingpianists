@@ -196,7 +196,7 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
-        box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
+        box.className = `alert alert-${type} mt-3 mb-0 d-none small py-2`; 
         box.textContent = msg; 
     }
 }
@@ -533,9 +533,11 @@ function startDrawing(e) {
     
     isDrawing = true;
     
+    const dpr = window.devicePixelRatio || 1;
+    const logicalWidth = drawCanvas.width / dpr;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = drawCanvas.width / rect.width;
-    const scaleY = drawCanvas.height / rect.height;
+    const scaleX = logicalWidth / rect.width;
+    const scaleY = scaleX; // Maintain square aspect ratio
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
@@ -548,10 +550,12 @@ function startDrawing(e) {
     const activeColor = document.getElementById('pdfColorPicker').value || '#ff0000';
     
     if (currentTool === 'pen') {
+        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 3;
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
+        activeCtx.globalCompositeOperation = 'multiply'; // Prevents self-overlap darkening
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 24;
         activeCtx.globalAlpha = 0.3; 
@@ -564,16 +568,18 @@ function draw(e) {
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
+    const dpr = window.devicePixelRatio || 1;
+    const logicalWidth = drawCanvas.width / dpr;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = drawCanvas.width / rect.width;
-    const scaleY = drawCanvas.height / rect.height;
+    const scaleX = logicalWidth / rect.width;
+    const scaleY = scaleX;
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
-    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    activeCtx.clearRect(0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
     
@@ -589,29 +595,45 @@ function stopDrawing() {
     
     isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
-    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
     currentStroke = [];
     
-    if (!undoHistory[pageNum]) undoHistory[pageNum] = [];
+    if (!undoHistory[pageNum]) {
+        // Ensure initial state is captured before pushing the new stroke
+        undoHistory[pageNum] = [drawCanvas.toDataURL("image/png")];
+    }
     undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
-    
     pageDrawings[pageNum] = undoHistory[pageNum][undoHistory[pageNum].length - 1];
+    pagesEdited.add(pageNum);
 }
 
 window.undoPdfStroke = function() {
-    if (undoHistory[pageNum] && undoHistory[pageNum].length > 0) {
-        undoHistory[pageNum].pop(); 
-        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    if (undoHistory[pageNum] && undoHistory[pageNum].length > 1) {
+        undoHistory[pageNum].pop(); // Remove latest stroke state
+        const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
         
-        if (undoHistory[pageNum].length > 0) {
-            const lastState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
-            const img = new Image();
-            img.onload = () => drawCtx.drawImage(img, 0, 0);
-            img.src = lastState;
-            pageDrawings[pageNum] = lastState;
-        } else {
+        const dpr = window.devicePixelRatio || 1;
+        drawCtx.save();
+        drawCtx.setTransform(1, 0, 0, 1, 0, 0);
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        drawCtx.restore();
+        
+        const img = new Image();
+        img.onload = () => {
+            drawCtx.save();
+            drawCtx.setTransform(1, 0, 0, 1, 0, 0);
+            drawCtx.drawImage(img, 0, 0);
+            drawCtx.restore();
+        };
+        img.src = targetState;
+        
+        if (undoHistory[pageNum].length === 1) {
             delete pageDrawings[pageNum];
             pagesEdited.delete(pageNum);
+        } else {
+            pageDrawings[pageNum] = targetState;
+            pagesEdited.add(pageNum);
         }
     }
 };
@@ -635,7 +657,6 @@ function renderPdfPage(num) {
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
         const viewport = page.getViewport({ scale: fitScale });
         
-        // High-DPI (Retina) scaling factor to eliminate mobile blurriness
         const dpr = window.devicePixelRatio || 1;
         
         pdfCanvas.width = viewport.width * dpr;
@@ -664,13 +685,26 @@ function renderPdfPage(num) {
         page.render(renderContext).promise.then(() => {
             pageIsRendering = false;
             
-            drawCtx.clearRect(0, 0, viewport.width, viewport.height);
-            activeCtx.clearRect(0, 0, viewport.width, viewport.height);
+            drawCtx.save();
+            drawCtx.setTransform(1, 0, 0, 1, 0, 0);
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+            drawCtx.restore();
+            activeCtx.restore();
             
             if (pageDrawings[num]) {
                 const img = new Image();
-                img.onload = () => drawCtx.drawImage(img, 0, 0, viewport.width, viewport.height);
+                img.onload = () => {
+                    drawCtx.save();
+                    drawCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    drawCtx.drawImage(img, 0, 0);
+                    drawCtx.restore();
+                    undoHistory[num] = [drawCanvas.toDataURL("image/png")];
+                };
                 img.src = pageDrawings[num];
+            } else {
+                undoHistory[num] = [drawCanvas.toDataURL("image/png")];
             }
             
             if (pageNumIsPending !== null) {
@@ -727,7 +761,10 @@ window.openPdfAnnotator = async function(pdfUrl) {
     });
     annotatorModal.show();
 
+    pdfCtx.save();
+    pdfCtx.setTransform(1, 0, 0, 1, 0, 0);
     pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+    pdfCtx.restore();
     pdfCtx.fillText("Loading PDF Engine...", 10, 50);
 
     try {
