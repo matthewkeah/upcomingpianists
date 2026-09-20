@@ -95,9 +95,10 @@
                         </div>
 
                         <div class="mb-4">
-                            <label for="actionPdfFile" class="form-label">Upload PDF Score *</label>
-                            <input class="form-control field" type="file" id="actionPdfFile" accept="application/pdf" required>
-                            <div class="invalid-feedback">Please attach your sheet music.</div>
+                            <label for="actionPdfFile" class="form-label">Upload PDF or Photo *</label>
+                            <!-- Updated accept attribute for image access -->
+                            <input class="form-control field" type="file" id="actionPdfFile" accept="application/pdf, image/*" required>
+                            <div class="invalid-feedback">Please attach your media.</div>
                         </div>
 
                         <div class="mb-4 form-check">
@@ -117,6 +118,7 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js"></script>
+    <!-- Appended ?v=1.1 for cache busting -->
+    <script type="module" src="main.js?v=1.1"></script>
 </body>
 </html>

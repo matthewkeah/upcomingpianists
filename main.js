@@ -49,12 +49,10 @@ const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
 
-// Cloudinary Endpoints (Dual routing to prevent 404 RAW bugs)
 const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/auto/upload"; 
 const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
 const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
-// EmailJS Credentials
 const EMAILJS_PUBLIC_KEY = "knA4KtHIfdGjzsSA0";
 const EMAILJS_SERVICE_ID = "service_f3at2ti";
 const EMAILJS_TEMPLATE_ID = "template_07vc37l";
@@ -196,7 +194,7 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
-        box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
+        box.className = `alert alert-${type} mt-3 mb-0 d-none small py-2`; 
         box.textContent = msg; 
     }
 }
@@ -405,7 +403,7 @@ window.openImageViewer = function(encodedUrls, startIndex) {
 };
 
 // ----------------------------------------------------------------------------
-// INTERACTIVE PDF ANNOTATION ENGINE
+// INTERACTIVE PDF & PHOTO ANNOTATION ENGINE
 // ----------------------------------------------------------------------------
 const PDF_MODAL_HTML = `
 <div class="modal fade" id="annotatorModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" style="z-index: 1055;">
@@ -433,11 +431,13 @@ const PDF_MODAL_HTML = `
                 <div class="vr bg-dark mx-1"></div>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="undoPdfStroke()"><i class="bi bi-arrow-counterclockwise"></i> Undo</button>
             </div>
+            <!-- Overflow auto allows native browser scrollbars to handle panning when zoomed -->
             <div class="modal-body p-0 overflow-auto" id="pdfContainer" style="position: relative; background: #222; height: calc(100vh - 110px); display: flex; justify-content: center; align-items: flex-start;">
-                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform-origin: top center; transition: transform 0.2s ease;">
-                    <canvas id="pdfRenderCanvas" style="display: block; background: white;"></canvas>
-                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
-                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block;"></canvas>
+                <!-- Replaced transform scaling with explicit width/height to fix clipping -->
+                <div id="pdfCanvasWrapper" style="position: relative; margin-top: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    <canvas id="pdfRenderCanvas" style="display: block; background: white; width: 100%; height: 100%;"></canvas>
+                    <canvas id="pdfDrawCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block; width: 100%; height: 100%;"></canvas>
+                    <canvas id="pdfActiveStrokeCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; touch-action: none; display: block; width: 100%; height: 100%;"></canvas>
                 </div>
             </div>
         </div>
@@ -450,7 +450,12 @@ let pageIsRendering = false;
 let pageNumIsPending = null;
 
 let pdfCssScale = 1.0;         
-let pageFitScales = {}; // Tracks the exact dynamic fit size for perfect save alignment
+window.baseWrapperWidth = 0;
+window.baseWrapperHeight = 0;
+
+window.isImageAnnotator = false;
+window.currentAnnotatorMediaUrl = null;
+let pageFitScales = {}; 
     
 let pdfCanvas, pdfCtx, drawCanvas, drawCtx, activeCanvas, activeCtx;
 let currentTool = 'none'; 
@@ -503,9 +508,13 @@ async function loadPDFJSLibrary() {
 
 window.zoomPdf = function(delta) {
     pdfCssScale += delta;
-    if (pdfCssScale < 0.05) pdfCssScale = 0.05;
+    if (pdfCssScale < 0.2) pdfCssScale = 0.2;
     if (pdfCssScale > 3.0) pdfCssScale = 3.0;
-    document.getElementById('pdfCanvasWrapper').style.transform = `scale(${pdfCssScale})`;
+    
+    // Explicitly resizing the wrapper guarantees the browser's overflow scrollbars react properly
+    const wrapper = document.getElementById('pdfCanvasWrapper');
+    wrapper.style.width = (window.baseWrapperWidth * pdfCssScale) + 'px';
+    wrapper.style.height = (window.baseWrapperHeight * pdfCssScale) + 'px';
 };
 
 window.setPdfTool = function(tool) {
@@ -535,9 +544,9 @@ function startDrawing(e) {
     const dpr = window.devicePixelRatio || 1;
     const rect = drawCanvas.getBoundingClientRect();
     
-    // Calculate scaling factoring in high-DPI canvas actual size vs CSS dimensions
-    const scaleX = drawCanvas.width / rect.width; 
-    const scaleY = drawCanvas.height / rect.height; 
+    // Scale logically connects touch point to backing store regardless of CSS zoom width
+    const scaleX = drawCanvas.width / dpr / rect.width; 
+    const scaleY = drawCanvas.height / dpr / rect.height; 
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
@@ -552,12 +561,12 @@ function startDrawing(e) {
     if (currentTool === 'pen') {
         activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 3 * dpr; // Scale brush to match physical pixels
+        activeCtx.lineWidth = 3; 
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.globalCompositeOperation = 'multiply'; // Accurate blending mode
+        activeCtx.globalCompositeOperation = 'multiply'; // Professional physical blending
         activeCtx.strokeStyle = activeColor;
-        activeCtx.lineWidth = 24 * dpr; // Scale brush to match physical pixels
+        activeCtx.lineWidth = 12; // Reduced thickness per user request
         activeCtx.globalAlpha = 0.3; 
     }
 }
@@ -567,16 +576,17 @@ function draw(e) {
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
+    const dpr = window.devicePixelRatio || 1;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = drawCanvas.width / rect.width;
-    const scaleY = drawCanvas.height / rect.height;
+    const scaleX = drawCanvas.width / dpr / rect.width;
+    const scaleY = drawCanvas.height / dpr / rect.height;
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
-    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
     
@@ -592,7 +602,8 @@ function stopDrawing() {
     
     isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
-    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
     currentStroke = [];
     
     if (!undoHistory[pageNum]) {
@@ -607,11 +618,12 @@ window.undoPdfStroke = function() {
         undoHistory[pageNum].pop(); 
         const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
         
-        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        const dpr = window.devicePixelRatio || 1;
+        drawCtx.clearRect(0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
         
         const img = new Image();
         img.onload = () => {
-            drawCtx.drawImage(img, 0, 0);
+            drawCtx.drawImage(img, 0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
         };
         img.src = targetState;
         
@@ -631,8 +643,55 @@ function saveCurrentPageDrawings() {
     }
 }
 
+// Adapts the canvas scaling logic for pure photos
+function renderImagePage(img) {
+    const container = document.getElementById('pdfContainer');
+    const measuredWidth = container ? container.clientWidth : 0;
+    const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
+    
+    const fitScale = Math.min(availableWidth / img.width, 0.9); 
+    pageFitScales[1] = fitScale; 
+    
+    window.baseWrapperWidth = img.width * fitScale;
+    window.baseWrapperHeight = img.height * fitScale;
+    
+    const wrapper = document.getElementById('pdfCanvasWrapper');
+    wrapper.style.width = window.baseWrapperWidth + 'px';
+    wrapper.style.height = window.baseWrapperHeight + 'px';
+    
+    const dpr = window.devicePixelRatio || 1;
+    
+    pdfCanvas.width = window.baseWrapperWidth * dpr;
+    pdfCanvas.height = window.baseWrapperHeight * dpr;
+    drawCanvas.width = window.baseWrapperWidth * dpr;
+    drawCanvas.height = window.baseWrapperHeight * dpr;
+    activeCanvas.width = window.baseWrapperWidth * dpr;
+    activeCanvas.height = window.baseWrapperHeight * dpr;
+    
+    pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    
+    drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    
+    // Draw the actual image
+    pdfCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+    
+    if (!pageDrawings[1]) {
+        undoHistory[1] = [drawCanvas.toDataURL("image/png")];
+    }
+    
+    document.getElementById('pdfPageIndicator').textContent = `Photo Attachment`;
+    document.getElementById('btnPdfPrev').style.display = 'none';
+    document.getElementById('btnPdfNext').style.display = 'none';
+}
+
 function renderPdfPage(num) {
     pageIsRendering = true;
+    
+    document.getElementById('btnPdfPrev').style.display = 'block';
+    document.getElementById('btnPdfNext').style.display = 'block';
     
     pdfDoc.getPage(num).then(page => {
         const baseViewport = page.getViewport({ scale: 1.0 });
@@ -642,12 +701,19 @@ function renderPdfPage(num) {
         const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
         
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
-        pageFitScales[num] = fitScale; // Store the exact calculated fit scale for this specific page
+        pageFitScales[num] = fitScale; // Store exact scale for synchronization
         
         const viewport = page.getViewport({ scale: fitScale });
+        
+        window.baseWrapperWidth = viewport.width;
+        window.baseWrapperHeight = viewport.height;
+        
+        const wrapper = document.getElementById('pdfCanvasWrapper');
+        wrapper.style.width = window.baseWrapperWidth + 'px';
+        wrapper.style.height = window.baseWrapperHeight + 'px';
+        
         const dpr = window.devicePixelRatio || 1;
         
-        // High-DPI physical backing store dimensions
         pdfCanvas.width = viewport.width * dpr;
         pdfCanvas.height = viewport.height * dpr;
         drawCanvas.width = viewport.width * dpr;
@@ -655,30 +721,25 @@ function renderPdfPage(num) {
         activeCanvas.width = viewport.width * dpr;
         activeCanvas.height = viewport.height * dpr;
         
-        // Logical CSS dimensions
-        pdfCanvas.style.width = `${viewport.width}px`;
-        pdfCanvas.style.height = `${viewport.height}px`;
-        drawCanvas.style.width = `${viewport.width}px`;
-        drawCanvas.style.height = `${viewport.height}px`;
-        activeCanvas.style.width = `${viewport.width}px`;
-        activeCanvas.style.height = `${viewport.height}px`;
+        pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
         const renderContext = {
             canvasContext: pdfCtx,
             viewport: viewport,
-            transform: [dpr, 0, 0, dpr, 0, 0] // Native PDF.js high resolution configuration
         };
         
         page.render(renderContext).promise.then(() => {
             pageIsRendering = false;
             
-            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-            activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+            drawCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
+            activeCtx.clearRect(0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
             
             if (pageDrawings[num]) {
                 const img = new Image();
                 img.onload = () => {
-                    drawCtx.drawImage(img, 0, 0);
+                    drawCtx.drawImage(img, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
                     undoHistory[num] = [drawCanvas.toDataURL("image/png")];
                 };
                 img.src = pageDrawings[num];
@@ -718,11 +779,13 @@ function onNextPage() {
     queueRenderPage(pageNum);
 }
 
-window.openPdfAnnotator = async function(pdfUrl) {
-    if (!pdfUrl) return alert("Score file not found.");
+window.openMediaAnnotator = async function(mediaUrl, mediaType) {
+    if (!mediaUrl) return alert("Media file not found.");
     
     injectPdfModal();
     
+    window.isImageAnnotator = (mediaType === 'image');
+    window.currentAnnotatorMediaUrl = mediaUrl;
     pageDrawings = {};
     pageFitScales = {};
     pagesEdited.clear();
@@ -730,7 +793,9 @@ window.openPdfAnnotator = async function(pdfUrl) {
     pageNum = 1;
     pdfCssScale = 1.0;
     
-    document.getElementById('pdfCanvasWrapper').style.transform = `scale(1.0)`;
+    const wrapper = document.getElementById('pdfCanvasWrapper');
+    wrapper.style.width = "auto";
+    wrapper.style.height = "auto";
     setPdfTool('none');
     
     const modalEl = document.getElementById('annotatorModal');
@@ -742,16 +807,26 @@ window.openPdfAnnotator = async function(pdfUrl) {
     annotatorModal.show();
 
     pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-    pdfCtx.fillText("Loading PDF Engine...", 10, 50);
+    pdfCtx.fillText("Loading Engine...", 10, 50);
 
     try {
-        const [pdfjs] = await Promise.all([loadPDFJSLibrary(), modalShown]);
-        const loadingTask = pdfjs.getDocument(pdfUrl);
-        pdfDoc = await loadingTask.promise;
-        renderPdfPage(pageNum);
+        await modalShown;
+        
+        if (window.isImageAnnotator) {
+            const img = new Image();
+            img.crossOrigin = "Anonymous"; // Prevents Cloudinary from tainting the canvas export
+            img.onload = () => renderImagePage(img);
+            img.onerror = () => alert("Failed to load photo.");
+            img.src = mediaUrl;
+        } else {
+            const pdfjs = await loadPDFJSLibrary();
+            const loadingTask = pdfjs.getDocument(mediaUrl);
+            pdfDoc = await loadingTask.promise;
+            renderPdfPage(pageNum);
+        }
     } catch (err) {
-        console.error("PDF Load Error:", err);
-        alert("Failed to load PDF viewer.");
+        console.error("Media Load Error:", err);
+        alert("Failed to load viewer.");
     }
 };
 
@@ -772,53 +847,74 @@ async function processAndSaveAnnotations() {
     try {
         window.pendingAttachments = [];
         
-        for (let num of pagesEdited) {
-            const page = await pdfDoc.getPage(num);
-            
-            // Synchronize the saved scale explicitly with the user's viewing scale
-            const exactRenderScale = pageFitScales[num] || 1.0;
-            const viewport = page.getViewport({ scale: exactRenderScale });
+        // Handle Photo Output
+        if (window.isImageAnnotator) {
+            const exactRenderScale = pageFitScales[1] || 1.0;
             const dpr = window.devicePixelRatio || 1;
             
             const offScreenCanvas = document.createElement('canvas');
-            offScreenCanvas.width = viewport.width * dpr;
-            offScreenCanvas.height = viewport.height * dpr;
+            offScreenCanvas.width = window.baseWrapperWidth * dpr;
+            offScreenCanvas.height = window.baseWrapperHeight * dpr;
             const offCtx = offScreenCanvas.getContext('2d');
+            offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
             
-            await page.render({ 
-                canvasContext: offCtx, 
-                viewport: viewport,
-                transform: [dpr, 0, 0, dpr, 0, 0] // Maintains matching high resolution logic
-            }).promise;
+            const baseImg = new Image();
+            baseImg.crossOrigin = "Anonymous";
+            await new Promise(r => { baseImg.onload = r; baseImg.src = window.currentAnnotatorMediaUrl; });
+            offCtx.drawImage(baseImg, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
             
-            const img = new Image();
-            await new Promise((resolve) => {
-                img.onload = resolve;
-                img.src = pageDrawings[num];
-            });
-            offCtx.drawImage(img, 0, 0);
-            
-            const mergedDataUrl = offScreenCanvas.toDataURL("image/png");
+            const annImg = new Image();
+            await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[1]; });
+            offCtx.drawImage(annImg, 0, 0, window.baseWrapperWidth, window.baseWrapperHeight);
             
             const formData = new FormData();
-            formData.append("file", mergedDataUrl);
+            formData.append("file", offScreenCanvas.toDataURL("image/png"));
             formData.append("upload_preset", CLOUDINARY_PRESET);
             
-            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { 
-                method: "POST", 
-                body: formData 
-            });
-            
+            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
             const cloudinaryData = await cloudinaryRes.json();
             
-            if (!cloudinaryRes.ok) {
-                throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
-            }
+            if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Upload failed.");
             
-            window.pendingAttachments.push({ 
-                url: cloudinaryData.secure_url, 
-                type: 'image' 
-            });
+            window.pendingAttachments.push({ url: cloudinaryData.secure_url, type: 'image' });
+            
+        } else {
+            // Handle PDF Output Array
+            for (let num of pagesEdited) {
+                const page = await pdfDoc.getPage(num);
+                const exactRenderScale = pageFitScales[num] || 1.0;
+                const viewport = page.getViewport({ scale: exactRenderScale });
+                const dpr = window.devicePixelRatio || 1;
+                
+                const offScreenCanvas = document.createElement('canvas');
+                offScreenCanvas.width = viewport.width * dpr;
+                offScreenCanvas.height = viewport.height * dpr;
+                const offCtx = offScreenCanvas.getContext('2d');
+                
+                await page.render({ 
+                    canvasContext: offCtx, 
+                    viewport: viewport,
+                    transform: [dpr, 0, 0, dpr, 0, 0]
+                }).promise;
+                
+                const img = new Image();
+                await new Promise((resolve) => {
+                    img.onload = resolve;
+                    img.src = pageDrawings[num];
+                });
+                offCtx.drawImage(img, 0, 0, viewport.width, viewport.height);
+                
+                const formData = new FormData();
+                formData.append("file", offScreenCanvas.toDataURL("image/png"));
+                formData.append("upload_preset", CLOUDINARY_PRESET);
+                
+                const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
+                const cloudinaryData = await cloudinaryRes.json();
+                
+                if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Upload failed.");
+                
+                window.pendingAttachments.push({ url: cloudinaryData.secure_url, type: 'image' });
+            }
         }
         
         const statusMsg = document.getElementById("chatStatusMsg");
@@ -839,24 +935,19 @@ async function processAndSaveAnnotations() {
 }
 
 // ----------------------------------------------------------------------------
-// CLOUDINARY UPLOAD ROUTER (Supports Docs, Videos, Images)
+// CLOUDINARY UPLOAD ROUTER
 // ----------------------------------------------------------------------------
 async function uploadMediaArray(fileList) {
     const uploadedData = [];
-    
     for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", CLOUDINARY_PRESET);
         
         const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
         const data = await res.json();
-        
-        if (!res.ok) {
-            throw new Error(data.error?.message || "Media upload failed.");
-        }
+        if (!res.ok) throw new Error(data.error?.message || "Media upload failed.");
         
         uploadedData.push({ 
             url: data.secure_url, 
@@ -864,23 +955,18 @@ async function uploadMediaArray(fileList) {
             name: file.name 
         });
     }
-    
     return uploadedData;
 }
 
 function generateMediaBadges(attachmentsArray) {
     if (!attachmentsArray || attachmentsArray.length === 0) return '';
-    
     let html = '<div class="mt-2 d-flex gap-2 flex-wrap">';
-    
     const imageGallery = attachmentsArray.filter(a => a.type === 'image' && a.url && a.url !== 'undefined').map(a => a.url);
     const encodedGallery = encodeURIComponent(JSON.stringify(imageGallery));
-    
     let imgCounter = 0;
     
     attachmentsArray.forEach((media) => {
         if (!media.url || media.url === 'undefined') return;
-        
         if (media.type === 'image') {
             html += `<span onclick="openImageViewer('${encodedGallery}', ${imgCounter})" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Image</span>`;
             imgCounter++;
@@ -890,207 +976,179 @@ function generateMediaBadges(attachmentsArray) {
             html += `<a href="${media.url}" target="_blank" class="badge bg-secondary text-light text-decoration-none"><i class="bi bi-file-earmark-pdf"></i> ${media.name ? media.name.substring(0,10) + '...' : 'Document'}</a>`;
         }
     });
-    
     html += '</div>';
     return html;
 }
 
 // ----------------------------------------------------------------------------
-// COMMUNICATIONS HUB (BROADCASTS ONLY)
+// ADMIN DIRECTORY & REPERTOIRE (WITH ATTENDANCE LOGIC)
 // ----------------------------------------------------------------------------
-async function loadCommunicationsHub() {
-    const feed = document.getElementById("communicationsFeed");
-    if (!feed) return;
-    
-    feed.innerHTML = "<div class='text-center text-muted-c my-5'>Loading broadcasts...</div>";
+const PARTICIPATION_MODAL_HTML = `
+<div class="modal fade" id="participationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content modal-kcpo bg-dark text-light border-secondary">
+            <div class="modal-header border-line">
+                <h5 class="modal-title accent-gold" id="participationTitle">User Participation</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="participationBody">
+                <div class="text-center text-muted-c">Loading records...</div>
+            </div>
+        </div>
+    </div>
+</div>`;
+
+function injectAdminModals() {
+    if (!document.getElementById("participationModal")) {
+        document.body.insertAdjacentHTML("beforeend", PARTICIPATION_MODAL_HTML);
+    }
+}
+
+window.viewUserParticipation = async function(email, name) {
+    const body = document.getElementById("participationBody");
+    document.getElementById("participationTitle").textContent = `${name}'s Masterclass Log`;
+    body.innerHTML = `<div class="text-center text-muted-c my-4">Pulling database records...</div>`;
+    new bootstrap.Modal(document.getElementById('participationModal')).show();
     
     try {
-        const q = query(collection(db, "communications"), where("type", "==", "broadcast"));
-        const querySnapshot = await getDocs(q);
-        let posts = [];
+        const scQ = query(collection(db, "scores"), where("uploadedByEmail", "==", email));
+        const scSnap = await getDocs(scQ);
+        const fbQ = query(collection(db, "score_feedback"), where("senderEmail", "==", email));
+        const fbSnap = await getDocs(fbQ);
         
-        querySnapshot.forEach(docSnap => {
-            posts.push({ id: docSnap.id, ...docSnap.data() });
+        let html = `<h6 class="accent-gold mt-2">Scores Uploaded (${scSnap.size})</h6><ul class="list-group list-group-flush mb-4 border-secondary">`;
+        if(scSnap.empty) html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No scores uploaded yet.</li>`;
+        scSnap.forEach(d => {
+            const s = d.data();
+            html += `<li class="list-group-item bg-transparent text-light px-0 border-line d-flex justify-content-between">
+                <span>${s.pieceTitle} <span class="badge badge-kcpo ms-2">${s.sessionMonth}</span></span>
+                <a href="${s.pdfUrl}" target="_blank" class="text-info small">View File</a>
+            </li>`;
         });
         
-        if (posts.length === 0) {
-            feed.innerHTML = "<div class='text-center text-muted-c my-5'>No public broadcasts found.</div>";
+        html += `</ul><h6 class="accent-gold">Feedback & Attendance Given (${fbSnap.size})</h6><ul class="list-group list-group-flush border-secondary">`;
+        if(fbSnap.empty) html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No feedback submitted. Rendered absent.</li>`;
+        fbSnap.forEach(d => {
+            const f = d.data();
+            const dateStr = f.createdAt ? f.createdAt.toDate().toLocaleDateString() : "Unknown Date";
+            html += `<li class="list-group-item bg-transparent text-light px-0 border-line">
+                <div class="d-flex justify-content-between mb-1"><small class="text-muted-c">For: ${f.performerName}</small><small class="text-muted-c">${dateStr}</small></div>
+                <div class="small">${f.message}</div>
+            </li>`;
+        });
+        html += `</ul>`;
+        
+        body.innerHTML = html;
+    } catch(err) {
+        body.innerHTML = `<div class="alert alert-danger">Error retrieving logs.</div>`;
+    }
+}
+
+async function loadAdminUsers() {
+    const userTable = document.getElementById("adminUserTableBody");
+    if (!userTable) return;
+    
+    userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading member directory & attendance logic...</td></tr>`;
+    injectAdminModals();
+
+    try {
+        const currentMonthString = new Date().toLocaleString('default', { month: 'long' }) + " " + new Date().getFullYear();
+        
+        const [usersSnap, scoresSnap, fbSnap] = await Promise.all([
+            getDocs(collection(db, "users")),
+            getDocs(query(collection(db, "scores"), where("sessionMonth", "==", currentMonthString))),
+            getDocs(collection(db, "score_feedback"))
+        ]);
+
+        const userScores = {};
+        scoresSnap.forEach(d => { userScores[d.data().uploadedByEmail] = true; });
+
+        const userFeedback = {};
+        fbSnap.forEach(d => { 
+            if (d.data().createdAt) {
+                const fbDate = d.data().createdAt.toDate();
+                const fbMonth = fbDate.toLocaleString('default', { month: 'long' }) + " " + fbDate.getFullYear();
+                if (fbMonth === currentMonthString) {
+                    userFeedback[d.data().senderEmail] = (userFeedback[d.data().senderEmail] || 0) + 1;
+                }
+            }
+        });
+
+        userTable.innerHTML = ""; 
+        if (usersSnap.empty) {
+            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No registered members found.</td></tr>`;
             return;
         }
 
-        posts.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
-        
-        feed.innerHTML = "";
-        
-        posts.forEach(post => {
-            const dateStr = post.createdAt ? post.createdAt.toDate().toLocaleString() : "Recently";
-            const badgeHtml = `<span class="badge bg-gold text-dark ms-2">Broadcast</span>`;
+        const usersArray = [];
+        usersSnap.forEach(doc => usersArray.push({ id: doc.id, ...doc.data() }));
+        usersArray.sort((a,b) => (a.name || "Z").localeCompare(b.name || "Z"));
+
+        usersArray.forEach((userData) => {
+            const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
-            feed.innerHTML += `
-                <div class="card kcpo-card p-4 mb-4 border-secondary">
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <div>
-                            <h5 class="mb-1 text-light">${post.title} ${badgeHtml}</h5>
-                            <small class="text-muted-c">From: KCPO Admin • ${dateStr}</small>
-                        </div>
-                    </div>
-                    <div class="text-light" style="white-space: pre-wrap;">${post.message}</div>
-                    ${generateMediaBadges(post.attachments)}
-                </div>
+            const hasRegistered = userScores[userData.email] ? 
+                `<i class="bi bi-circle-fill text-success small me-1" title="Registered this month"></i>` : 
+                `<i class="bi bi-circle-fill text-danger small me-1" title="Not registered this month"></i>`;
+                
+            const attendance = userFeedback[userData.email] ? 
+                `<span class="badge bg-success ms-2">Attended</span>` : 
+                `<span class="badge bg-secondary ms-2">Absent</span>`;
+            
+            const actionButtons = isCoreAdmin ? 
+                `<span class="badge bg-secondary">System Admin</span>` : 
+                `<button class="btn btn-sm btn-outline-info me-2" onclick="viewUserParticipation('${userData.email}', '${(userData.name||'').replace(/'/g, "\\'")}')">Participation</button>
+                 <button class="btn btn-sm btn-outline-danger" onclick="deleteUserRecord('${userData.id}', '${userData.email}')">Wipe Data</button>`;
+
+            userTable.innerHTML += `
+                <tr>
+                    <td class="text-light">${hasRegistered} ${userData.name || "Unknown Pianist"} ${attendance}</td>
+                    <td class="text-muted-c">${userData.email}</td>
+                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'} px-2 py-1">${userData.role.toUpperCase()}</span></td>
+                    <td>${actionButtons}</td>
+                </tr>
             `;
         });
-        
-    } catch (err) {
-        console.error("Failed to load hub:", err);
-        feed.innerHTML = "<div class='alert alert-danger'>Failed to load broadcasts. Please check your connection.</div>";
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory.</td></tr>`;
     }
 }
 
 // ----------------------------------------------------------------------------
-// ADMIN DIRECTORY & COMPOSER LOGIC
+// DATA CONCURRENCY ENFORCERS (CASCADE DELETES)
 // ----------------------------------------------------------------------------
-window.setComposerTarget = function(uid, name, email) {
-    document.getElementById('broadcastTargetUid').value = uid;
-    document.getElementById('broadcastTargetEmail').value = email;
-    
-    if (uid === 'all') {
-        document.getElementById('composerTargetLabel').textContent = "Broadcasting to: All Members";
-        document.getElementById('composerPrivateBadge').classList.add('d-none');
-    } else {
-        document.getElementById('composerTargetLabel').textContent = `Direct Message: ${name}`;
-        document.getElementById('composerPrivateBadge').classList.remove('d-none');
-    }
-    
-    if (window.innerWidth < 992) {
-        document.getElementById('adminBroadcastForm').scrollIntoView({behavior: 'smooth'});
-    }
-}
-
-function filterDirectory() {
-    const searchInput = document.getElementById('adminMemberSearch');
-    if (!searchInput) return;
-    
-    const queryStr = searchInput.value.toLowerCase();
-    const list = document.getElementById('adminMemberList');
-    list.innerHTML = "";
-    
-    globalUserDirectory.filter(u => u.name.toLowerCase().includes(queryStr) || u.email.toLowerCase().includes(queryStr))
-    .forEach(u => {
-        list.innerHTML += `
-            <button class="list-group-item list-group-item-action bg-transparent border-secondary text-light py-3" 
-                    onclick="setComposerTarget('${u.id}', '${u.name.replace(/'/g, "\\'")}', '${u.email}')">
-                <strong>${u.name}</strong><br>
-                <small class="text-muted-c">${u.email}</small>
-            </button>`;
-    });
-}
-
-async function loadAdminDirectory() {
-    const list = document.getElementById("adminMemberList");
-    if (!list) return;
-    
+window.deleteScore = async function(scoreId, skipConfirm = false) {
+    if (!skipConfirm && !confirm("Delete this repertoire entry AND wipe all associated feedback?")) return;
     try {
-        const snap = await getDocs(collection(db, "users"));
-        globalUserDirectory = [];
+        const fbQ = query(collection(db, "score_feedback"), where("scoreId", "==", scoreId));
+        const fbSnap = await getDocs(fbQ);
+        fbSnap.forEach(d => deleteDoc(d.ref));
+        await deleteDoc(doc(db, "scores", scoreId));
         
-        snap.forEach(doc => {
-            const data = doc.data();
-            globalUserDirectory.push({ 
-                id: doc.id, 
-                name: data.name || "Unknown", 
-                email: data.email 
-            });
-        });
-        
-        globalUserDirectory.sort((a,b) => a.name.localeCompare(b.name));
-        filterDirectory();
-        
-        document.getElementById('adminMemberSearch').addEventListener('input', filterDirectory);
-        
-    } catch (err) { 
-        console.error("Failed to load directory", err); 
-    }
-}
+        if (!skipConfirm) document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
+    } catch (err) { alert("Concurrency error during deletion."); }
+};
 
-async function initAdminBroadcasts() {
-    const form = document.getElementById("adminBroadcastForm");
-    
-    if (!form || form.dataset.initialized) return; 
-    
-    form.dataset.initialized = "true";
-    
-    await loadAdminDirectory();
-
-    form.addEventListener("submit", async (e) => {
-        e.preventDefault();
+window.deleteUserRecord = async function(userId, userEmail) {
+    if (!confirm("Are you certain you want to completely WIPE this user and cascade delete all their uploads and feedback?")) return;
+    try {
+        const scQ = query(collection(db, "scores"), where("uploadedByUid", "==", userId));
+        const scSnap = await getDocs(scQ);
+        scSnap.forEach(d => window.deleteScore(d.id, true)); // Triggers cascading score cleanup
         
-        const targetUid = document.getElementById("broadcastTargetUid").value;
-        const targetEmail = document.getElementById("broadcastTargetEmail").value;
-        const title = document.getElementById("broadcastTitle").value.trim();
-        const msg = document.getElementById("broadcastMessage").value.trim();
-        const fileInput = document.getElementById("broadcastMedia");
+        const fbQ = query(collection(db, "score_feedback"), where("senderEmail", "==", userEmail));
+        const fbSnap = await getDocs(fbQ);
+        fbSnap.forEach(d => deleteDoc(d.ref));
         
-        const btn = document.getElementById("btnSendBroadcast");
-        const status = document.getElementById("broadcastStatus");
-        
-        btn.disabled = true; 
-        btn.textContent = "Publishing & Sending Emails...";
-        status.classList.add("d-none");
-        
-        try {
-            let uploadedMedia = [];
-            if (fileInput.files.length > 0) {
-                uploadedMedia = await uploadMediaArray(fileInput.files);
-            }
-            
-            await addDoc(collection(db, "communications"), {
-                type: targetUid === "all" ? "broadcast" : "direct",
-                targetUid: targetUid,
-                targetEmail: targetEmail,
-                title: title,
-                message: msg,
-                attachments: uploadedMedia,
-                adminEmail: auth.currentUser.email,
-                createdAt: serverTimestamp()
-            });
-            
-            if (typeof emailjs !== 'undefined') {
-                let emailsToNotify = "";
-                
-                if (targetUid === "all") {
-                    emailsToNotify = globalUserDirectory.map(u => u.email).join(",");
-                } else {
-                    emailsToNotify = targetEmail;
-                }
-                
-                await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-                    to_email: emailsToNotify, 
-                    subject: title,
-                    message: msg,
-                    admin_name: sessionStorage.getItem("kcpo_name") || "KCPO Admin"
-                });
-            }
-            
-            status.className = "alert alert-success mt-3 d-block small";
-            status.textContent = "Message published and email notifications sent successfully!";
-            
-            form.reset();
-            setComposerTarget('all', 'All Members', 'all');
-            
-        } catch (error) {
-            console.error("Broadcast Error Payload:", error); 
-            status.className = "alert alert-danger mt-3 d-block small";
-            const errorMessage = error.text || error.message || "An unknown error occurred. Check the console.";
-            status.textContent = "Error: " + errorMessage;
-        } finally {
-            btn.disabled = false; 
-            btn.textContent = "Publish & Send Email Notification";
-        }
-    });
-}
+        await deleteDoc(doc(db, "users", userId));
+        alert("Member profile and associated data successfully wiped.");
+        loadAdminUsers(); 
+    } catch (error) { alert("Failed to wipe member: " + error.message); }
+};
 
 // ----------------------------------------------------------------------------
-// REGISTRATION FORM
+// REGISTRATION & DASHBOARDS
 // ----------------------------------------------------------------------------
 function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
@@ -1103,7 +1161,7 @@ function initRegistrationForm() {
             const authModal = new bootstrap.Modal(document.getElementById('authModal'));
             document.getElementById('signup-tab').click();
             authModal.show();
-            showAuthAlert("Please create an account to secure your performance slot and upload scores.", "info");
+            showAuthAlert("Please create an account to secure your performance slot and upload media.", "info");
             return;
         }
 
@@ -1118,8 +1176,17 @@ function initRegistrationForm() {
         const month = document.getElementById("sessionMonth").value;
         const title = document.getElementById("repertoire").value.trim();
 
+        // Capture the explicitly typed form fields
+        const fName = document.getElementById("firstName")?.value.trim() || "";
+        const lName = document.getElementById("lastName")?.value.trim() || "";
+        const formEmail = document.getElementById("email")?.value.trim() || auth.currentUser.email;
+        const isHybrid = document.getElementById("hybridCheck")?.checked || false;
+        
+        // Combine names, falling back to session memory if left blank
+        const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcpo_name") || "Member";
+
         btn.disabled = true; 
-        btn.textContent = "Uploading Score...";
+        btn.textContent = "Uploading Media...";
         status.classList.add("d-none");
 
         try {
@@ -1134,19 +1201,23 @@ function initRegistrationForm() {
                 throw new Error(data.error?.message || "Cloudinary upload failed.");
             }
 
+            const fileType = file.type.startsWith('image/') ? 'image' : 'pdf';
+
             await addDoc(collection(db, "scores"), {
                 pieceTitle: title,
                 pdfUrl: data.secure_url,
+                mediaType: fileType,
                 fileName: file.name,
                 sessionMonth: month,
-                uploadedByEmail: auth.currentUser.email,
-                uploadedByUid: auth.currentUser.uid,
-                uploaderName: sessionStorage.getItem("kcpo_name") || "Member", 
+                uploadedByEmail: formEmail, // Uses the explicitly typed email
+                uploadedByUid: auth.currentUser.uid, 
+                uploaderName: fullName, // Uses the explicitly typed name
+                isHybrid: isHybrid, // Logs their virtual attendance preference
                 createdAt: serverTimestamp()
             });
 
             status.className = "alert alert-success mt-3 d-block";
-            status.textContent = "Slot secured and score uploaded successfully!";
+            status.textContent = "Slot secured and media uploaded successfully!";
             form.reset(); 
             form.classList.remove("was-validated");
             
@@ -1159,25 +1230,17 @@ function initRegistrationForm() {
         }
     });
 }
-
-// ----------------------------------------------------------------------------
-// MASTERCLASSES: TIME-TRAVEL REPERTOIRE & CHAT
-// ----------------------------------------------------------------------------
 function initMasterclasses() {
     const monthSelect = document.getElementById("repertoireMonthSelect");
     if (!monthSelect) return;
 
     loadRepertoireForMonth(monthSelect.value);
-
-    monthSelect.addEventListener("change", (e) => {
-        loadRepertoireForMonth(e.target.value);
-    });
+    monthSelect.addEventListener("change", (e) => { loadRepertoireForMonth(e.target.value); });
 
     const chatForm = document.getElementById("chatSubmitForm");
     if (chatForm) {
         chatForm.addEventListener("submit", async (e) => {
             e.preventDefault();
-            
             const scoreId = document.getElementById("currentChatScoreId").value;
             const pieceTitle = document.getElementById("chatPieceTitle").value;
             const performerEmail = document.getElementById("chatPerformerEmail").value;
@@ -1190,9 +1253,7 @@ function initMasterclasses() {
             const msg = msgInput.value.trim();
             if (!msg || !auth.currentUser) return;
 
-            submitBtn.disabled = true;
-            submitBtn.textContent = "Sending...";
-            
+            submitBtn.disabled = true; submitBtn.textContent = "Sending...";
             const finalAttachments = window.pendingAttachments || [];
 
             try {
@@ -1208,22 +1269,17 @@ function initMasterclasses() {
                     createdAt: serverTimestamp()
                 });
                 
-                msgInput.value = "";
-                window.pendingAttachments = []; 
-                
+                msgInput.value = ""; window.pendingAttachments = []; 
                 statusMsg.className = "small mt-2 text-center text-success";
                 statusMsg.textContent = "Feedback sent successfully!";
-                
                 setTimeout(() => { statusMsg.textContent = ""; }, 3000);
                 
                 loadChatMessages(scoreId); 
             } catch (err) { 
-                console.error("Chat error", err); 
                 statusMsg.className = "small mt-2 text-center text-danger";
                 statusMsg.textContent = "Failed to send feedback.";
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = "Send";
+                submitBtn.disabled = false; submitBtn.textContent = "Send";
             }
         });
     }
@@ -1232,20 +1288,17 @@ function initMasterclasses() {
 async function loadRepertoireForMonth(targetMonth) {
     const list = document.getElementById('repertoireList');
     if (!list) return;
-    
     list.innerHTML = `<div class="text-center text-muted-c w-100">Loading repertoire...</div>`;
 
     try {
         const q = query(collection(db, "scores"), where("sessionMonth", "==", targetMonth));
         const snapshot = await getDocs(q);
-        
         if (snapshot.empty) {
             list.innerHTML = `<div class="alert kcpo-card border-line text-muted-c text-center w-100 py-4"><i class="bi bi-calendar-x me-2 accent-gold"></i> No presentations scheduled for ${targetMonth} yet.</div>`;
             return;
         }
 
         list.innerHTML = "";
-        
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
         const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
@@ -1254,23 +1307,24 @@ async function loadRepertoireForMonth(targetMonth) {
             const data = docSnap.data();
             const scoreId = docSnap.id;
             const isOwner = auth.currentUser && auth.currentUser.uid === data.uploadedByUid;
-            
             const allowDelete = isAdmin || (isOwner && targetMonth !== currentMonthString);
             const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recently";
-            const uploaderName = data.uploaderName || "KCPO Pianist";
             
+            // Handles missing mediaTypes from earlier test submissions naturally
+            const mediaTypeStr = data.mediaType || 'pdf'; 
+
             list.innerHTML += `
                 <div class="col-md-6 col-lg-4">
                     <div class="card kcpo-card p-4 h-100 d-flex flex-column">
                         <h5 class="accent-gold mb-1">${data.pieceTitle}</h5>
                         <p class="small text-muted-c mb-3">
-                            <i class="bi bi-person me-1"></i>${uploaderName}<br>
+                            <i class="bi bi-person me-1"></i>${data.uploaderName || "Pianist"}<br>
                             <i class="bi bi-clock me-1"></i>${dateStr}
                         </p>
                         
                         <div class="mt-auto d-flex flex-column gap-2">
-                            <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View / Download</a>
-                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${uploaderName.replace(/'/g, "\\'")}', '${data.pdfUrl}')">
+                            <a href="${data.pdfUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View Media</a>
+                            <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${(data.uploaderName||"").replace(/'/g, "\\'")}', '${data.pdfUrl}', '${mediaTypeStr}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
                             ${allowDelete ? `<button class="btn btn-outline-danger btn-sm mt-1" onclick="deleteScore('${scoreId}')"><i class="bi bi-trash"></i> Remove</button>` : ''}
@@ -1283,15 +1337,8 @@ async function loadRepertoireForMonth(targetMonth) {
     }
 }
 
-window.deleteScore = async function(scoreId) {
-    if (!confirm("Delete this repertoire entry?")) return;
-    await deleteDoc(doc(db, "scores", scoreId));
-    document.getElementById("repertoireMonthSelect").dispatchEvent(new Event("change"));
-};
-
-window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, pdfUrl) {
+window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, performerName, mediaUrl, mediaType) {
     document.getElementById("chatModalTitle").textContent = `Feedback: ${title}`;
-    
     document.getElementById("currentChatScoreId").value = scoreId;
     document.getElementById("chatPieceTitle").value = title;
     document.getElementById("chatPerformerEmail").value = performerEmail;
@@ -1304,36 +1351,29 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
         annotateBtn = document.createElement('button');
         annotateBtn.id = 'btnLaunchAnnotator';
         annotateBtn.className = 'btn btn-outline-danger btn-sm w-100 mb-3';
-        annotateBtn.innerHTML = '<i class="bi bi-pen"></i> Open Score to Annotate';
+        annotateBtn.innerHTML = '<i class="bi bi-pen"></i> Open Media to Annotate';
         chatForm.parentNode.insertBefore(annotateBtn, chatForm);
     }
     
     if (annotateBtn) {
-        annotateBtn.onclick = () => openPdfAnnotator(pdfUrl);
+        // Now dynamically routes based on image vs pdf
+        annotateBtn.onclick = () => openMediaAnnotator(mediaUrl, mediaType);
     }
     
     window.pendingAttachments = [];
-    
     const input = document.getElementById("chatInputMessage");
     const submitBtn = document.getElementById("chatSubmitBtn");
     const statusMsg = document.getElementById("chatStatusMsg");
     const adminControls = document.getElementById("adminChatControls");
     
-    adminControls.innerHTML = "";
-    statusMsg.textContent = ""; 
+    adminControls.innerHTML = ""; statusMsg.textContent = ""; 
     
     if (isLocked && sessionStorage.getItem("kcpo_role") !== "admin") {
-        input.disabled = true; 
-        submitBtn.disabled = true;
-        if(annotateBtn) annotateBtn.disabled = true;
-        
+        input.disabled = true; submitBtn.disabled = true; if(annotateBtn) annotateBtn.disabled = true;
         statusMsg.className = "small mt-2 text-center text-danger";
         statusMsg.textContent = "This feedback session has been locked by an admin.";
     } else {
-        input.disabled = !auth.currentUser; 
-        submitBtn.disabled = !auth.currentUser;
-        if(annotateBtn) annotateBtn.disabled = !auth.currentUser;
-        
+        input.disabled = !auth.currentUser; submitBtn.disabled = !auth.currentUser; if(annotateBtn) annotateBtn.disabled = !auth.currentUser;
         statusMsg.className = "small mt-2 text-center text-muted-c";
         statusMsg.textContent = !auth.currentUser ? "You must be signed in to leave feedback." : "";
         
@@ -1355,19 +1395,13 @@ window.toggleChatLock = async function(scoreId, lockState) {
 async function loadChatMessages(scoreId) {
     const box = document.getElementById("chatMessages");
     box.innerHTML = "<small class='text-muted-c'>Loading feedback...</small>";
-    
     try {
         const q = query(collection(db, "score_feedback"), where("scoreId", "==", scoreId), orderBy("createdAt", "asc"));
         const snapshot = await getDocs(q);
-        
-        if (snapshot.empty) {
-            box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>";
-            return;
-        }
+        if (snapshot.empty) { box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>"; return; }
         
         box.innerHTML = "";
         const isAdmin = sessionStorage.getItem("kcpo_role") === "admin";
-        
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
             box.innerHTML += `
@@ -1380,10 +1414,7 @@ async function loadChatMessages(scoreId) {
                     ${generateMediaBadges(data.attachments)}
                 </div>`;
         });
-    } catch (error) {
-        console.error("Error loading chat:", error);
-        box.innerHTML = `<div class="alert alert-danger small p-2 text-center mt-2">Failed to load feedback.</div>`;
-    }
+    } catch (error) { box.innerHTML = `<div class="alert alert-danger small p-2 text-center mt-2">Failed to load feedback.</div>`; }
 }
 
 window.deleteFeedbackMsg = async function(msgId, scoreId) {
@@ -1393,201 +1424,186 @@ window.deleteFeedbackMsg = async function(msgId, scoreId) {
 };
 
 // ----------------------------------------------------------------------------
-// MEMBER & ADMIN DASHBOARDS
+// MEMBER DASHBOARD & HUB LOGIC
 // ----------------------------------------------------------------------------
-async function initAdminDashboard() {
-    const adminContent = document.getElementById("adminContent");
-    if (!adminContent) return;
-
-    const accessMsg = document.getElementById("accessDeniedMsg");
+async function loadCommunicationsHub() {
+    const feed = document.getElementById("communicationsFeed");
+    if (!feed) return;
+    feed.innerHTML = "<div class='text-center text-muted-c my-5'>Loading broadcasts...</div>";
     
-    onAuthStateChanged(auth, async (user) => {
-        if (user && sessionStorage.getItem("kcpo_role") === "admin") {
-            accessMsg.classList.add("d-none");
-            adminContent.classList.remove("d-none");
-            
-            await loadAdminUsers();
-            await loadAdminFeedback();
-            initAdminBroadcasts();
-        } else {
-            adminContent.classList.add("d-none");
-            accessMsg.classList.remove("d-none");
-        }
-    });
-}
-
-async function loadAdminUsers() {
-    const userTable = document.getElementById("adminUserTableBody");
-    if (!userTable) return;
-    
-    userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading member directory...</td></tr>`;
-
     try {
-        const querySnapshot = await getDocs(collection(db, "users"));
-        userTable.innerHTML = ""; 
-
-        if (querySnapshot.empty) {
-            userTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No registered members found.</td></tr>`;
-            return;
-        }
-
-        querySnapshot.forEach((documentSnapshot) => {
-            const userData = documentSnapshot.data();
-            const userId = documentSnapshot.id;
-            
-            const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
-            
-            const actionButtons = isCoreAdmin ? 
-                `<span class="badge bg-secondary">System Admin</span>` : 
-                `<button class="btn btn-sm btn-outline-gold me-2" onclick="promoteUser('${userId}')" ${userData.role === 'admin' ? 'disabled' : ''}>Promote</button>
-                 <button class="btn btn-sm btn-outline-danger" onclick="deleteUserRecord('${userId}')">Delete</button>`;
-
-            userTable.innerHTML += `
-                <tr>
-                    <td class="text-light">${userData.name || "Unknown Pianist"}</td>
-                    <td class="text-muted-c">${userData.email}</td>
-                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'} px-2 py-1">${userData.role.toUpperCase()}</span></td>
-                    <td>${actionButtons}</td>
-                </tr>
-            `;
+        const q = query(collection(db, "communications"), where("type", "==", "broadcast"));
+        const querySnapshot = await getDocs(q);
+        let posts = [];
+        querySnapshot.forEach(docSnap => { posts.push({ id: docSnap.id, ...docSnap.data() }); });
+        
+        if (posts.length === 0) { feed.innerHTML = "<div class='text-center text-muted-c my-5'>No public broadcasts found.</div>"; return; }
+        posts.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+        
+        feed.innerHTML = "";
+        posts.forEach(post => {
+            const dateStr = post.createdAt ? post.createdAt.toDate().toLocaleString() : "Recently";
+            const badgeHtml = `<span class="badge bg-gold text-dark ms-2">Broadcast</span>`;
+            feed.innerHTML += `
+                <div class="card kcpo-card p-4 mb-4 border-secondary">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="mb-1 text-light">${post.title} ${badgeHtml}</h5>
+                            <small class="text-muted-c">From: KCPO Admin • ${dateStr}</small>
+                        </div>
+                    </div>
+                    <div class="text-light" style="white-space: pre-wrap;">${post.message}</div>
+                    ${generateMediaBadges(post.attachments)}
+                </div>`;
         });
-    } catch (error) {
-        console.error("Error fetching users:", error);
-        userTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load member directory.</td></tr>`;
-    }
+    } catch (err) { feed.innerHTML = "<div class='alert alert-danger'>Failed to load broadcasts. Please check your connection.</div>"; }
 }
-
-window.promoteUser = async function(userId) {
-    if (!confirm("Are you sure you want to promote this member to an Administrator?")) return;
-    try {
-        await updateDoc(doc(db, "users", userId), { role: "admin" });
-        alert("Member successfully promoted to Administrator.");
-        loadAdminUsers(); 
-    } catch (error) {
-        alert("Failed to promote user: " + error.message);
-    }
-};
-
-window.deleteUserRecord = async function(userId) {
-    if (!confirm("Are you certain you want to permanently remove this user's profile from KCPO?")) return;
-    try {
-        await deleteDoc(doc(db, "users", userId));
-        alert("Member profile successfully removed.");
-        loadAdminUsers(); 
-    } catch (error) {
-        alert("Failed to remove member profile: " + error.message);
-    }
-};
 
 async function loadAdminFeedback() {
     const feedbackTable = document.getElementById("adminFeedbackTableBody");
     if (!feedbackTable) return;
-    
     feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading feedback records...</td></tr>`;
 
     try {
         const querySnapshot = await getDocs(collection(db, "score_feedback"));
         feedbackTable.innerHTML = "";
-
-        if (querySnapshot.empty) {
-            feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`;
-            return;
-        }
+        if (querySnapshot.empty) { feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`; return; }
 
         querySnapshot.forEach((docSnap) => {
             const data = docSnap.data();
             const msgId = docSnap.id;
             const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
-            
             const displaySenderName = data.senderName || "Unknown Member";
-            const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) 
-                ? `<small class="text-muted-c">${data.senderEmail}</small>` 
-                : '';
+            const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) ? `<small class="text-muted-c">${data.senderEmail}</small>` : '';
 
             feedbackTable.innerHTML += `
                 <tr>
-                    <td class="text-light">
-                        <div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>
-                        ${emailHtml}
-                    </td>
-                    <td class="text-muted-c">
-                        <span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br>
-                        <small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small>
-                    </td>
-                    <td class="small">
-                        ${snippet}
-                        <div class="mt-1">${generateMediaBadges(data.attachments)}</div>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button>
-                    </td>
-                </tr>
-            `;
+                    <td class="text-light"><div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>${emailHtml}</td>
+                    <td class="text-muted-c"><span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br><small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small></td>
+                    <td class="small">${snippet}<div class="mt-1">${generateMediaBadges(data.attachments)}</div></td>
+                    <td><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button></td>
+                </tr>`;
         });
-    } catch (error) {
-        console.error("Error fetching feedback:", error);
-        feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`;
-    }
+    } catch (error) { feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`; }
 }
 
 window.deleteGlobalFeedback = async function(msgId) {
     if (!confirm("Are you sure you want to permanently delete this comment?")) return;
-    try {
-        await deleteDoc(doc(db, "score_feedback", msgId));
-        loadAdminFeedback(); 
-    } catch (error) {
-        alert("Failed to delete comment: " + error.message);
-    }
+    try { await deleteDoc(doc(db, "score_feedback", msgId)); loadAdminFeedback(); } catch (error) { alert("Failed to delete comment: " + error.message); }
 };
+
+window.setComposerTarget = function(uid, name, email) {
+    document.getElementById('broadcastTargetUid').value = uid;
+    document.getElementById('broadcastTargetEmail').value = email;
+    if (uid === 'all') {
+        document.getElementById('composerTargetLabel').textContent = "Broadcasting to: All Members";
+        document.getElementById('composerPrivateBadge').classList.add('d-none');
+    } else {
+        document.getElementById('composerTargetLabel').textContent = `Direct Message: ${name}`;
+        document.getElementById('composerPrivateBadge').classList.remove('d-none');
+    }
+    if (window.innerWidth < 992) { document.getElementById('adminBroadcastForm').scrollIntoView({behavior: 'smooth'}); }
+}
+
+function filterDirectory() {
+    const searchInput = document.getElementById('adminMemberSearch');
+    if (!searchInput) return;
+    const queryStr = searchInput.value.toLowerCase();
+    const list = document.getElementById('adminMemberList');
+    list.innerHTML = "";
+    
+    globalUserDirectory.filter(u => u.name.toLowerCase().includes(queryStr) || u.email.toLowerCase().includes(queryStr))
+    .forEach(u => {
+        list.innerHTML += `
+            <button class="list-group-item list-group-item-action bg-transparent border-secondary text-light py-3" 
+                    onclick="setComposerTarget('${u.id}', '${u.name.replace(/'/g, "\\'")}', '${u.email}')">
+                <strong>${u.name}</strong><br><small class="text-muted-c">${u.email}</small>
+            </button>`;
+    });
+}
+
+async function loadAdminDirectory() {
+    const list = document.getElementById("adminMemberList");
+    if (!list) return;
+    try {
+        const snap = await getDocs(collection(db, "users"));
+        globalUserDirectory = [];
+        snap.forEach(doc => { const data = doc.data(); globalUserDirectory.push({ id: doc.id, name: data.name || "Unknown", email: data.email }); });
+        globalUserDirectory.sort((a,b) => a.name.localeCompare(b.name));
+        filterDirectory();
+        document.getElementById('adminMemberSearch').addEventListener('input', filterDirectory);
+    } catch (err) { console.error("Failed to load directory", err); }
+}
+
+async function initAdminBroadcasts() {
+    const form = document.getElementById("adminBroadcastForm");
+    if (!form || form.dataset.initialized) return; 
+    form.dataset.initialized = "true";
+    await loadAdminDirectory();
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const targetUid = document.getElementById("broadcastTargetUid").value;
+        const targetEmail = document.getElementById("broadcastTargetEmail").value;
+        const title = document.getElementById("broadcastTitle").value.trim();
+        const msg = document.getElementById("broadcastMessage").value.trim();
+        const fileInput = document.getElementById("broadcastMedia");
+        
+        const btn = document.getElementById("btnSendBroadcast");
+        const status = document.getElementById("broadcastStatus");
+        
+        btn.disabled = true; btn.textContent = "Publishing & Sending Emails..."; status.classList.add("d-none");
+        try {
+            let uploadedMedia = [];
+            if (fileInput.files.length > 0) uploadedMedia = await uploadMediaArray(fileInput.files);
+            
+            await addDoc(collection(db, "communications"), {
+                type: targetUid === "all" ? "broadcast" : "direct", targetUid: targetUid, targetEmail: targetEmail,
+                title: title, message: msg, attachments: uploadedMedia, adminEmail: auth.currentUser.email, createdAt: serverTimestamp()
+            });
+            
+            if (typeof emailjs !== 'undefined') {
+                let emailsToNotify = targetUid === "all" ? globalUserDirectory.map(u => u.email).join(",") : targetEmail;
+                await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                    to_email: emailsToNotify, subject: title, message: msg, admin_name: sessionStorage.getItem("kcpo_name") || "KCPO Admin"
+                });
+            }
+            
+            status.className = "alert alert-success mt-3 d-block small"; status.textContent = "Message published!";
+            form.reset(); setComposerTarget('all', 'All Members', 'all');
+        } catch (error) {
+            status.className = "alert alert-danger mt-3 d-block small"; status.textContent = "Error: " + (error.text || error.message);
+        } finally { btn.disabled = false; btn.textContent = "Publish & Send Email Notification"; }
+    });
+}
 
 async function loadMemberInbox(user) {
     const inboxFeed = document.getElementById("memberInboxFeed");
     if (!inboxFeed) return;
-
     inboxFeed.innerHTML = "<div class='text-center text-muted-c my-5'>Loading inbox...</div>";
 
     try {
         const feedbackQuery = query(collection(db, "score_feedback"), where("performerEmail", "==", user.email));
         const feedbackSnap = await getDocs(feedbackQuery);
-        
         const broadcastQuery = query(collection(db, "communications"), where("type", "==", "broadcast"));
         const broadcastSnap = await getDocs(broadcastQuery);
-
         const dmQuery = query(collection(db, "communications"), where("targetUid", "==", user.uid));
         const dmSnap = await getDocs(dmQuery);
         
         let messages = [];
-        
-        feedbackSnap.forEach(doc => {
-            messages.push({ ...doc.data(), source: 'feedback' });
-        });
-        
-        broadcastSnap.forEach(doc => {
-            messages.push({ ...doc.data(), source: 'comm' });
-        });
-
-        dmSnap.forEach(doc => {
-            if (doc.data().type !== "broadcast") {
-                messages.push({ ...doc.data(), source: 'comm' });
-            }
-        });
+        feedbackSnap.forEach(doc => { messages.push({ ...doc.data(), source: 'feedback' }); });
+        broadcastSnap.forEach(doc => { messages.push({ ...doc.data(), source: 'comm' }); });
+        dmSnap.forEach(doc => { if (doc.data().type !== "broadcast") messages.push({ ...doc.data(), source: 'comm' }); });
         
         if (messages.length === 0) {
-            inboxFeed.innerHTML = `
-                <div class="card kcpo-card p-4 text-center">
-                    <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
-                    <p class="text-muted-c small mb-0">Your inbox is empty.</p>
-                </div>`;
-            return;
+            inboxFeed.innerHTML = `<div class="card kcpo-card p-4 text-center"><i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i><p class="text-muted-c small mb-0">Your inbox is empty.</p></div>`; return;
         }
 
         messages.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-
         inboxFeed.innerHTML = "";
         
         messages.forEach((item) => {
             const dateStr = item.createdAt ? item.createdAt.toDate().toLocaleDateString() : "Recently";
-            
             if (item.source === 'feedback') {
                 inboxFeed.innerHTML += `
                     <div class="card kcpo-card p-3 mb-2">
@@ -1601,7 +1617,6 @@ async function loadMemberInbox(user) {
             } else {
                 const isDM = item.type === "direct";
                 const badgeHtml = isDM ? `<span class="badge bg-danger ms-2">Direct Message</span>` : `<span class="badge bg-gold text-dark ms-2">Admin Broadcast</span>`;
-                
                 inboxFeed.innerHTML += `
                     <div class="card kcpo-card p-3 mb-2 border-${isDM ? 'danger' : 'secondary'}">
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1613,11 +1628,7 @@ async function loadMemberInbox(user) {
                     </div>`;
             }
         });
-        
-    } catch (error) {
-        console.error("Error loading inbox:", error);
-        inboxFeed.innerHTML = "<div class='text-danger'>Failed to load inbox.</div>";
-    }
+    } catch (error) { inboxFeed.innerHTML = "<div class='text-danger'>Failed to load inbox.</div>"; }
 }
 
 async function initMemberDashboard() {
@@ -1630,18 +1641,13 @@ async function initMemberDashboard() {
         if (user) {
             accessDeniedMsg?.classList.add("d-none");
             memberContent.classList.remove("d-none");
-            
             await loadMemberInbox(user);
-            
             const uploadForm = document.getElementById("memberScoreUploadForm");
             
             if (uploadForm && !uploadForm.dataset.initialized) {
-                
                 uploadForm.dataset.initialized = "true";
-                
                 uploadForm.addEventListener("submit", async (e) => {
                     e.preventDefault();
-                    
                     const titleInput = document.getElementById("scoreTitle");
                     const monthInput = document.getElementById("memberSessionMonth");
                     const fileInput = document.getElementById("pdfFile");
@@ -1651,28 +1657,23 @@ async function initMemberDashboard() {
 
                     if (!file) return;
 
-                    submitBtn.disabled = true; 
-                    submitBtn.innerHTML = `Uploading...`; 
-                    statusBox.classList.add("d-none");
+                    submitBtn.disabled = true; submitBtn.innerHTML = `Uploading...`; statusBox.classList.add("d-none");
 
                     try {
                         const formData = new FormData();
                         formData.append("file", file); 
                         formData.append("upload_preset", CLOUDINARY_PRESET);
-                        
-                        const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { 
-                            method: "POST", 
-                            body: formData 
-                        });
+                        const cloudinaryRes = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
                         const cloudinaryData = await cloudinaryRes.json();
                         
-                        if (!cloudinaryRes.ok) {
-                            throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
-                        }
+                        if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Cloudinary upload failed.");
+
+                        const fileType = file.type.startsWith('image/') ? 'image' : 'pdf';
 
                         await addDoc(collection(db, "scores"), {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: cloudinaryData.secure_url, 
+                            mediaType: fileType, // Automated tag
                             fileName: file.name,
                             sessionMonth: monthInput.value,
                             uploadedByEmail: user.email, 
@@ -1682,15 +1683,13 @@ async function initMemberDashboard() {
                         });
 
                         statusBox.className = "alert alert-success small p-2 mt-3 d-block"; 
-                        statusBox.textContent = "Score uploaded successfully!"; 
+                        statusBox.textContent = "Media uploaded successfully!"; 
                         uploadForm.reset();
                         
                     } catch (error) {
-                        statusBox.className = "alert alert-danger small p-2 mt-3 d-block"; 
-                        statusBox.textContent = "Upload failed: " + error.message;
+                        statusBox.className = "alert alert-danger small p-2 mt-3 d-block"; statusBox.textContent = "Upload failed: " + error.message;
                     } finally { 
-                        submitBtn.disabled = false; 
-                        submitBtn.textContent = "Upload to Repository"; 
+                        submitBtn.disabled = false; submitBtn.textContent = "Upload to Repository"; 
                     }
                 });
             }

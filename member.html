@@ -39,7 +39,6 @@
                         </button>
                     </li>
                     <li class="nav-item ms-lg-3 my-2 my-lg-0">
-                        <!-- ID matches our main.js dynamic logic -->
                         <button class="btn btn-gold btn-sm px-3" id="navAuthBtn">
                             <i class="bi bi-person-check-fill me-1"></i> Member Inbox
                         </button>
@@ -63,7 +62,6 @@
                 <section class="mb-5">
                     <h4 class="mb-3 font-serif"><i class="bi bi-megaphone me-2 accent-burgundy"></i>KCPO Announcements</h4>
                     <div id="announcementsFeed" class="d-flex flex-column gap-3">
-                        <!-- JS will populate this. For now, a placeholder state: -->
                         <div class="alert kcpo-card border-line text-muted-c small p-3" role="alert">
                             No new announcements from the Masterclass Coordinator.
                         </div>
@@ -74,7 +72,6 @@
                 <section>
                     <h4 class="mb-3 font-serif"><i class="bi bi-inbox me-2 accent-gold"></i>My Feedback Inbox</h4>
                     <div id="memberInboxFeed" class="d-flex flex-column gap-3">
-                        <!-- JS will populate this. -->
                         <div class="card kcpo-card p-4 text-center">
                             <i class="bi bi-envelope-paper display-4 text-faint-c mb-3"></i>
                             <p class="text-muted-c small mb-0">Your peer feedback from recent masterclasses will appear here.</p>
@@ -87,7 +84,7 @@
             <!-- Right Column: Score Upload & Actions -->
             <div class="col-lg-5 col-xl-4">
                 <div class="card feature-card p-4 position-sticky" style="top: 2rem;">
-                    <h5 class="accent-gold mb-3"><i class="bi bi-file-earmark-arrow-up me-2"></i>Submit PDF Score</h5>
+                    <h5 class="accent-gold mb-3"><i class="bi bi-file-earmark-arrow-up me-2"></i>Submit Media</h5>
                     <p class="small text-muted-c mb-4">Upload your sheet music ahead of your scheduled session so peers can follow along.</p>
                     
                     <form id="memberScoreUploadForm" class="needs-validation" novalidate>
@@ -95,9 +92,19 @@
                             <label for="scoreTitle" class="form-label small">Piece Title & Composer *</label>
                             <input type="text" class="form-control field" id="scoreTitle" placeholder="e.g., Chopin Ballade No. 1" required>
                         </div>
+                        
+                        <!-- Restored Target Month Dropdown -->
+                        <div class="mb-3">
+                            <label class="form-label text-muted-c small">Target Masterclass Month *</label>
+                            <select class="form-select field" id="memberSessionMonth" required>
+                                <option value="" selected disabled>Select a month...</option>
+                            </select>
+                        </div>
+
                         <div class="mb-4">
-                            <label for="pdfFile" class="form-label small">Select PDF File *</label>
-                            <input class="form-control field" type="file" id="pdfFile" accept="application/pdf" required>
+                            <label for="pdfFile" class="form-label small">Upload PDF or Photo *</label>
+                            <!-- Updated accept attribute for image access -->
+                            <input class="form-control field" type="file" id="pdfFile" accept="application/pdf, image/*" required>
                         </div>
                         <button type="submit" class="btn btn-outline-gold w-100">Upload to Repository</button>
                     </form>
@@ -120,6 +127,7 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js"></script>
+    <!-- Appended ?v=1.1 for cache busting -->
+    <script type="module" src="main.js?v=1.1"></script>
 </body>
 </html>
