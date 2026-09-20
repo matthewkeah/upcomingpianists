@@ -630,61 +630,30 @@ function renderPdfPage(num) {
         
         const container = document.getElementById('pdfContainer');
         // clientWidth can read as 0 (or a stale value) if this runs before the
-        // modal has finished its show transition/layout — and some scores
-        // (this Schumann PDF included) have an unusually large native page
-        // size (1240 x 1754 pts here, vs. ~600pt for a normal page), which
-        // makes any measurement error much more visible. So rather than
-        // only falling back to window.innerWidth when the container reading
-        // looks broken, we always take whichever is SMALLER of the two —
-        // the container can never make the render bigger than the device's
-        // actual screen, no matter what caused a bad measurement.
+        // modal has finished its show transition/layout — fall back to the
+        // viewport width in that case so we never compute a fit scale off a
+        // bogus container size (this was the source of the "starts zoomed
+        // in on phones" bug).
         const measuredWidth = container ? container.clientWidth : 0;
-        const reliableWidth = measuredWidth > 100 ? Math.min(measuredWidth, window.innerWidth) : window.innerWidth;
-        const availableWidth = Math.min(reliableWidth, 1400) - 40;
+        const availableWidth = (measuredWidth > 100 ? measuredWidth : window.innerWidth) - 40;
         
         // Flexible fit scale calculation without restrictive minimum caps
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
-
-        // This is the size the page actually appears at on screen.
-        const cssViewport = page.getViewport({ scale: fitScale });
-
-        // Render the raster buffer at native pixel density (retina etc.) so
-        // it stays crisp, while the CSS size above keeps it fit-to-screen.
-        // Rendering 1 buffer pixel per CSS pixel — what the previous
-        // version did — looks fine on standard-DPI screens but blurry on
-        // any phone with devicePixelRatio 2 or 3 (i.e. most of them),
-        // because the browser has to stretch that low-res buffer across
-        // 2-3x as many physical pixels. Capped at 3x so a very high-DPR
-        // device doesn't blow up canvas memory unnecessarily.
-        const dpr = Math.min(window.devicePixelRatio || 1, 3);
-        const renderViewport = page.getViewport({ scale: fitScale * dpr });
-
-        pdfCanvas.width = renderViewport.width;
-        pdfCanvas.height = renderViewport.height;
-        pdfCanvas.style.width = cssViewport.width + 'px';
-        pdfCanvas.style.height = cssViewport.height + 'px';
-
-        drawCanvas.width = renderViewport.width;
-        drawCanvas.height = renderViewport.height;
-        drawCanvas.style.width = cssViewport.width + 'px';
-        drawCanvas.style.height = cssViewport.height + 'px';
-
-        activeCanvas.width = renderViewport.width;
-        activeCanvas.height = renderViewport.height;
-        activeCanvas.style.width = cssViewport.width + 'px';
-        activeCanvas.style.height = cssViewport.height + 'px';
-
-        // Safety net still in place: the CSS size above is always derived
-        // from the same clamped fitScale used for the fit-to-screen math,
-        // so it can't overflow the screen — this max-width is just extra
-        // insurance and never actually triggers in the normal case.
-        [pdfCanvas, drawCanvas, activeCanvas].forEach(c => {
-            c.style.maxWidth = '100%';
-        });
+        
+        const viewport = page.getViewport({ scale: fitScale });
+        
+        pdfCanvas.height = viewport.height;
+        pdfCanvas.width = viewport.width;
+        
+        drawCanvas.height = viewport.height;
+        drawCanvas.width = viewport.width;
+        
+        activeCanvas.height = viewport.height;
+        activeCanvas.width = viewport.width;
         
         const renderContext = {
             canvasContext: pdfCtx,
-            viewport: renderViewport
+            viewport: viewport
         };
         
         page.render(renderContext).promise.then(() => {
