@@ -196,7 +196,7 @@ window.logoutUser = async function() {
 function showAuthAlert(msg, type = "danger") {
     const box = document.getElementById("authAlert");
     if (box) { 
-        box.className = `alert alert-${type} mt-3 mb-0 d-none small py-2`; 
+        box.className = `alert alert-${type} mt-3 mb-0 d-block small py-2`; 
         box.textContent = msg; 
     }
 }
@@ -530,14 +530,11 @@ window.setPdfTool = function(tool) {
 
 function startDrawing(e) {
     if (currentTool === 'none') return;
-    
     isDrawing = true;
     
-    const dpr = window.devicePixelRatio || 1;
-    const logicalWidth = drawCanvas.width / dpr;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = logicalWidth / rect.width;
-    const scaleY = scaleX; // Maintain square aspect ratio
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
@@ -555,7 +552,7 @@ function startDrawing(e) {
         activeCtx.lineWidth = 3;
         activeCtx.globalAlpha = 1.0;
     } else if (currentTool === 'highlighter') {
-        activeCtx.globalCompositeOperation = 'multiply'; // Prevents self-overlap darkening
+        activeCtx.globalCompositeOperation = 'source-over';
         activeCtx.strokeStyle = activeColor;
         activeCtx.lineWidth = 24;
         activeCtx.globalAlpha = 0.3; 
@@ -564,29 +561,25 @@ function startDrawing(e) {
 
 function draw(e) {
     if (!isDrawing || currentTool === 'none') return;
-    
     e.preventDefault(); 
     pagesEdited.add(pageNum); 
     
-    const dpr = window.devicePixelRatio || 1;
-    const logicalWidth = drawCanvas.width / dpr;
     const rect = drawCanvas.getBoundingClientRect();
-    const scaleX = logicalWidth / rect.width;
-    const scaleY = scaleX;
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
     currentStroke.push({x, y});
     
-    activeCtx.clearRect(0, 0, drawCanvas.width / dpr, drawCanvas.height / dpr);
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     activeCtx.beginPath();
     activeCtx.moveTo(currentStroke[0].x, currentStroke[0].y);
     
     for (let i = 1; i < currentStroke.length; i++) {
         activeCtx.lineTo(currentStroke[i].x, currentStroke[i].y);
     }
-    
     activeCtx.stroke();
 }
 
@@ -595,12 +588,10 @@ function stopDrawing() {
     
     isDrawing = false;
     drawCtx.drawImage(activeCanvas, 0, 0);
-    const dpr = window.devicePixelRatio || 1;
-    activeCtx.clearRect(0, 0, activeCanvas.width / dpr, activeCanvas.height / dpr);
+    activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
     currentStroke = [];
     
     if (!undoHistory[pageNum]) {
-        // Ensure initial state is captured before pushing the new stroke
         undoHistory[pageNum] = [drawCanvas.toDataURL("image/png")];
     }
     undoHistory[pageNum].push(drawCanvas.toDataURL("image/png"));
@@ -610,21 +601,14 @@ function stopDrawing() {
 
 window.undoPdfStroke = function() {
     if (undoHistory[pageNum] && undoHistory[pageNum].length > 1) {
-        undoHistory[pageNum].pop(); // Remove latest stroke state
+        undoHistory[pageNum].pop(); 
         const targetState = undoHistory[pageNum][undoHistory[pageNum].length - 1];
         
-        const dpr = window.devicePixelRatio || 1;
-        drawCtx.save();
-        drawCtx.setTransform(1, 0, 0, 1, 0, 0);
         drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-        drawCtx.restore();
         
         const img = new Image();
         img.onload = () => {
-            drawCtx.save();
-            drawCtx.setTransform(1, 0, 0, 1, 0, 0);
             drawCtx.drawImage(img, 0, 0);
-            drawCtx.restore();
         };
         img.src = targetState;
         
@@ -657,25 +641,20 @@ function renderPdfPage(num) {
         const fitScale = Math.min(availableWidth / baseViewport.width, 0.9); 
         const viewport = page.getViewport({ scale: fitScale });
         
-        const dpr = window.devicePixelRatio || 1;
-        
-        pdfCanvas.width = viewport.width * dpr;
-        pdfCanvas.height = viewport.height * dpr;
+        pdfCanvas.width = viewport.width;
+        pdfCanvas.height = viewport.height;
         pdfCanvas.style.width = `${viewport.width}px`;
         pdfCanvas.style.height = `${viewport.height}px`;
-        pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
-        drawCanvas.width = viewport.width * dpr;
-        drawCanvas.height = viewport.height * dpr;
+        drawCanvas.width = viewport.width;
+        drawCanvas.height = viewport.height;
         drawCanvas.style.width = `${viewport.width}px`;
         drawCanvas.style.height = `${viewport.height}px`;
-        drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
-        activeCanvas.width = viewport.width * dpr;
-        activeCanvas.height = viewport.height * dpr;
+        activeCanvas.width = viewport.width;
+        activeCanvas.height = viewport.height;
         activeCanvas.style.width = `${viewport.width}px`;
         activeCanvas.style.height = `${viewport.height}px`;
-        activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
         const renderContext = {
             canvasContext: pdfCtx,
@@ -685,21 +664,13 @@ function renderPdfPage(num) {
         page.render(renderContext).promise.then(() => {
             pageIsRendering = false;
             
-            drawCtx.save();
-            drawCtx.setTransform(1, 0, 0, 1, 0, 0);
             drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-            activeCtx.setTransform(1, 0, 0, 1, 0, 0);
             activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-            drawCtx.restore();
-            activeCtx.restore();
             
             if (pageDrawings[num]) {
                 const img = new Image();
                 img.onload = () => {
-                    drawCtx.save();
-                    drawCtx.setTransform(1, 0, 0, 1, 0, 0);
                     drawCtx.drawImage(img, 0, 0);
-                    drawCtx.restore();
                     undoHistory[num] = [drawCanvas.toDataURL("image/png")];
                 };
                 img.src = pageDrawings[num];
@@ -761,10 +732,7 @@ window.openPdfAnnotator = async function(pdfUrl) {
     });
     annotatorModal.show();
 
-    pdfCtx.save();
-    pdfCtx.setTransform(1, 0, 0, 1, 0, 0);
     pdfCtx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-    pdfCtx.restore();
     pdfCtx.fillText("Loading PDF Engine...", 10, 50);
 
     try {
