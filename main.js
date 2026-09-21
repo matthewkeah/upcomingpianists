@@ -926,42 +926,143 @@ function injectAdminModals() {
     }
 }
 
-window.viewUserParticipation = async function(email, name) {
+// Helper: Generate array of month strings from start date to now
+function getMonthRange(startDate) {
+    const start = startDate || new Date();
+    const end = new Date();
+    const months = [];
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (current <= end) {
+        months.push(current.toLocaleString('default', { month: 'long' }) + " " + current.getFullYear());
+        current.setMonth(current.getMonth() + 1);
+    }
+    return months.reverse(); // Newest first
+}
+
+// Admin Trigger Functions for wiping data centrally from the modal
+window.adminWipeSingleScore = async function(scoreId, email, name, uid, joinedMs) {
+    if(!confirm("Wipe this score and its associated feedback?")) return;
+    await window.deleteScore(scoreId, true); 
+    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+}
+
+window.adminWipeAllScores = async function(uid, email, name, joinedMs) {
+    if(!confirm("Wipe ALL scores for this user?")) return;
+    const q = query(collection(db, "scores"), where("uploadedByUid", "==", uid));
+    const snap = await getDocs(q);
+    const promises = [];
+    snap.forEach(d => promises.push(window.deleteScore(d.id, true)));
+    await Promise.all(promises);
+    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+}
+
+window.adminWipeMonthFeedback = async function(email, monthStr, name, uid, joinedMs) {
+    if(!confirm(`Wipe all feedback from this user for ${monthStr}?`)) return;
+    const q = query(collection(db, "score_feedback"), where("senderEmail", "==", email));
+    const snap = await getDocs(q);
+    const promises = [];
+    snap.forEach(d => {
+        const date = d.data().createdAt?.toDate();
+        if (date) {
+            const mStr = date.toLocaleString('default', { month: 'long' }) + " " + date.getFullYear();
+            if (mStr === monthStr) promises.push(deleteDoc(d.ref));
+        }
+    });
+    await Promise.all(promises);
+    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+}
+
+window.viewUserParticipation = async function(email, name, uid, joinedTimestamp) {
     const body = document.getElementById("participationBody");
     document.getElementById("participationTitle").textContent = `${name}'s Masterclass Log`;
     body.innerHTML = `<div class="text-center text-muted-c my-4">Pulling database records...</div>`;
     new bootstrap.Modal(document.getElementById('participationModal')).show();
     
     try {
+        const joinDate = joinedTimestamp ? new Date(Number(joinedTimestamp)) : new Date();
+        const activeMonthsRange = getMonthRange(joinDate);
+        
         const scQ = query(collection(db, "scores"), where("uploadedByEmail", "==", email));
         const scSnap = await getDocs(scQ);
         const fbQ = query(collection(db, "score_feedback"), where("senderEmail", "==", email));
         const fbSnap = await getDocs(fbQ);
         
-        let html = `<h6 class="accent-gold mt-2">Scores Uploaded (${scSnap.size})</h6><ul class="list-group list-group-flush mb-4 border-secondary">`;
-        if(scSnap.empty) html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No scores uploaded yet.</li>`;
-        scSnap.forEach(d => {
-            const s = d.data();
-            const viewUrl = s.pdfUrl ? s.pdfUrl.split(',')[0] : '#';
-            html += `<li class="list-group-item bg-transparent text-light px-0 border-line d-flex justify-content-between">
-                <span>${s.pieceTitle} <span class="badge badge-kcpo ms-2">${s.sessionMonth}</span></span>
-                <a href="${viewUrl}" target="_blank" class="text-info small">View Media</a>
-            </li>`;
-        });
-        
-        html += `</ul><h6 class="accent-gold">Feedback & Attendance Given (${fbSnap.size})</h6><ul class="list-group list-group-flush border-secondary">`;
-        if(fbSnap.empty) html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No feedback submitted. Rendered absent.</li>`;
+        // Group feedback by month to evaluate attendance natively
+        const feedbackByMonth = {};
         fbSnap.forEach(d => {
             const f = d.data();
-            const dateStr = f.createdAt ? f.createdAt.toDate().toLocaleDateString() : "Unknown Date";
-            html += `<li class="list-group-item bg-transparent text-light px-0 border-line">
-                <div class="d-flex justify-content-between mb-1"><small class="text-muted-c">For: ${f.performerName}</small><small class="text-muted-c">${dateStr}</small></div>
-                <div class="small">${f.message}</div>
-            </li>`;
+            const date = f.createdAt ? f.createdAt.toDate() : new Date();
+            const monthStr = date.toLocaleString('default', { month: 'long' }) + " " + date.getFullYear();
+            if (!feedbackByMonth[monthStr]) feedbackByMonth[monthStr] = [];
+            feedbackByMonth[monthStr].push({ id: d.id, ...f, dateObj: date });
         });
-        html += `</ul>`;
+
+        // 1. SCORING SECTION
+        let html = `<div class="d-flex justify-content-between align-items-center mt-2 mb-2">
+            <h6 class="accent-gold mb-0">Scores Uploaded (${scSnap.size})</h6>
+            ${scSnap.size > 0 ? `<button class="btn btn-sm btn-outline-danger" onclick="adminWipeAllScores('${uid}', '${email}', '${name.replace(/'/g, "\\'")}', '${joinedTimestamp}')">Wipe All Scores</button>` : ''}
+        </div>
+        <ul class="list-group list-group-flush mb-4 border-secondary">`;
         
+        if(scSnap.empty) {
+            html += `<li class="list-group-item bg-transparent text-muted-c px-0 border-line">No scores uploaded yet.</li>`;
+        } else {
+            scSnap.forEach(d => {
+                const s = d.data();
+                const viewUrl = s.pdfUrl ? s.pdfUrl.split(',')[0] : '#';
+                html += `<li class="list-group-item bg-transparent text-light px-0 border-line d-flex justify-content-between align-items-center">
+                    <div>
+                        <span>${s.pieceTitle}</span> <span class="badge badge-kcpo ms-2">${s.sessionMonth}</span>
+                    </div>
+                    <div>
+                        <a href="${viewUrl}" target="_blank" class="text-info small me-3">View Media</a>
+                        <button class="btn btn-sm btn-outline-danger" onclick="adminWipeSingleScore('${d.id}', '${email}', '${name.replace(/'/g, "\\'")}', '${uid}', '${joinedTimestamp}')"><i class="bi bi-trash"></i></button>
+                    </div>
+                </li>`;
+            });
+        }
+        
+        // 2. ATTENDANCE & FEEDBACK TIMELINE
+        html += `</ul><h6 class="accent-gold mb-3">Attendance Timeline (Since ${joinDate.toLocaleDateString()})</h6><div class="accordion accordion-flush" id="participationAccordion">`;
+        
+        activeMonthsRange.forEach((monthStr, index) => {
+            const monthFeedback = feedbackByMonth[monthStr] || [];
+            const isPresent = monthFeedback.length > 0;
+            const badgeHtml = isPresent ? `<span class="badge bg-success ms-2">Present</span>` : `<span class="badge bg-secondary ms-2">Absent</span>`;
+            
+            html += `
+            <div class="accordion-item bg-transparent border-line">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed bg-transparent text-light px-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${index}">
+                        ${monthStr} ${badgeHtml} <span class="ms-auto small text-muted-c me-3">${monthFeedback.length} comments</span>
+                    </button>
+                </h2>
+                <div id="collapse-${index}" class="accordion-collapse collapse" data-bs-parent="#participationAccordion">
+                    <div class="accordion-body px-0 pt-2 pb-4">`;
+            
+            if (isPresent) {
+                html += `<div class="text-end mb-3"><button class="btn btn-sm btn-outline-danger" onclick="adminWipeMonthFeedback('${email}', '${monthStr}', '${name.replace(/'/g, "\\'")}', '${uid}', '${joinedTimestamp}')">Wipe Feedback for ${monthStr}</button></div>`;
+                monthFeedback.forEach(f => {
+                    const dateStr = f.dateObj ? f.dateObj.toLocaleDateString() : "Unknown Date";
+                    html += `
+                        <div class="mb-3 p-3 rounded" style="background: rgba(255,255,255,0.02);">
+                            <div class="d-flex justify-content-between mb-2">
+                                <small class="text-muted-c">For: ${f.performerName}</small>
+                                <small class="text-muted-c">${dateStr}</small>
+                            </div>
+                            <div class="small">${f.message}</div>
+                        </div>`;
+                });
+            } else {
+                html += `<div class="text-muted-c small">No feedback submitted. Rendered absent.</div>`;
+            }
+            
+            html += `</div></div></div>`;
+        });
+        
+        html += `</div>`;
         body.innerHTML = html;
+        
     } catch(err) {
         body.innerHTML = `<div class="alert alert-danger">Error retrieving logs.</div>`;
     }
@@ -991,9 +1092,10 @@ async function loadAdminUsers() {
             if (d.data().createdAt) {
                 const fbDate = d.data().createdAt.toDate();
                 const fbMonth = fbDate.toLocaleString('default', { month: 'long' }) + " " + fbDate.getFullYear();
-                if (fbMonth === currentMonthString) {
-                    userFeedback[d.data().senderEmail] = (userFeedback[d.data().senderEmail] || 0) + 1;
-                }
+                
+                // Track total unique feedback months per user for percentage calculation
+                if (!userFeedback[d.data().senderEmail]) userFeedback[d.data().senderEmail] = new Set();
+                userFeedback[d.data().senderEmail].add(fbMonth);
             }
         });
 
@@ -1010,22 +1112,24 @@ async function loadAdminUsers() {
         usersArray.forEach((userData) => {
             const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
+            // Green/Red purely indicates Registration status for the active month
             const hasRegistered = userScores[userData.email] ? 
                 `<i class="bi bi-circle-fill text-success small me-1" title="Registered this month"></i>` : 
                 `<i class="bi bi-circle-fill text-danger small me-1" title="Not registered this month"></i>`;
-                
-            const attendance = userFeedback[userData.email] ? 
-                `<span class="badge bg-success ms-2">Attended</span>` : 
-                `<span class="badge bg-secondary ms-2">Absent</span>`;
+            
+            // Calculate Percentage Active
+            const joinDate = userData.createdAt ? userData.createdAt.toDate() : new Date();
+            const totalMonthsSinceJoined = getMonthRange(joinDate).length;
+            const uniqueMonthsAttended = userFeedback[userData.email] ? userFeedback[userData.email].size : 0;
+            const activePercentage = Math.round((uniqueMonthsAttended / totalMonthsSinceJoined) * 100);
             
             const actionButtons = isCoreAdmin ? 
                 `<span class="badge bg-secondary">System Admin</span>` : 
-                `<button class="btn btn-sm btn-outline-info me-2" onclick="viewUserParticipation('${userData.email}', '${(userData.name||'').replace(/'/g, "\\'")}')">Participation</button>
-                 <button class="btn btn-sm btn-outline-danger" onclick="deleteUserRecord('${userData.id}', '${userData.email}')">Wipe Data</button>`;
+                `<button class="btn btn-sm btn-outline-info me-2" onclick="viewUserParticipation('${userData.email}', '${(userData.name||'').replace(/'/g, "\\'")}', '${userData.id}', '${joinDate.getTime()}')">Participation</button>`;
 
             userTable.innerHTML += `
                 <tr>
-                    <td class="text-light">${hasRegistered} ${userData.name || "Unknown Pianist"} ${attendance}</td>
+                    <td class="text-light">${hasRegistered} ${userData.name || "Unknown Pianist"} <span class="badge bg-secondary ms-2 opacity-75">${activePercentage}% Active</span></td>
                     <td class="text-muted-c">${userData.email}</td>
                     <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'} px-2 py-1">${userData.role.toUpperCase()}</span></td>
                     <td>${actionButtons}</td>
@@ -1209,7 +1313,11 @@ async function loadRepertoireForMonth(targetMonth) {
         list.innerHTML = "";
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
-        const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+        
+        let isAdmin = false;
+        if (auth.currentUser && auth.currentUser.email) {
+            isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+        }
         
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1274,7 +1382,10 @@ window.openFeedbackChat = function(scoreId, title, isLocked, performerEmail, per
     
     adminControls.innerHTML = ""; statusMsg.textContent = ""; 
     
-    const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+    let isAdmin = false;
+    if (auth.currentUser && auth.currentUser.email) {
+        isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+    }
     
     if (isLocked && !isAdmin) {
         input.disabled = true; submitBtn.disabled = true; if(annotateBtn) annotateBtn.disabled = true;
@@ -1309,7 +1420,10 @@ async function loadChatMessages(scoreId) {
         if (snapshot.empty) { box.innerHTML = "<small class='text-muted-c'>No feedback recorded yet. Be the first to review!</small>"; return; }
         
         box.innerHTML = "";
-        const isAdmin = auth.currentUser && auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+        let isAdmin = false;
+        if (auth.currentUser && auth.currentUser.email) {
+            isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+        }
         
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1368,32 +1482,66 @@ async function loadCommunicationsHub() {
     } catch (err) { feed.innerHTML = "<div class='alert alert-danger'>Failed to load broadcasts. Please check your connection.</div>"; }
 }
 
+// ----------------------------------------------------------------------------
+// ADMIN GLOBAL FEEDBACK VIEWER (NESTED BY MONTH)
+// ----------------------------------------------------------------------------
 async function loadAdminFeedback() {
     const feedbackTable = document.getElementById("adminFeedbackTableBody");
     if (!feedbackTable) return;
     feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading feedback records...</td></tr>`;
 
     try {
-        const querySnapshot = await getDocs(collection(db, "score_feedback"));
+        const q = query(collection(db, "score_feedback"), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        
         feedbackTable.innerHTML = "";
-        if (querySnapshot.empty) { feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`; return; }
+        if (querySnapshot.empty) { 
+            feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`; 
+            return; 
+        }
 
+        // Group feedback by month
+        const feedbackByMonth = {};
+        
         querySnapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            const msgId = docSnap.id;
-            const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
-            const displaySenderName = data.senderName || "Unknown Member";
-            const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) ? `<small class="text-muted-c">${data.senderEmail}</small>` : '';
+            const date = data.createdAt ? data.createdAt.toDate() : new Date();
+            const monthStr = date.toLocaleString('default', { month: 'long' }) + " " + date.getFullYear();
+            
+            if (!feedbackByMonth[monthStr]) feedbackByMonth[monthStr] = [];
+            feedbackByMonth[monthStr].push({ id: docSnap.id, ...data });
+        });
 
+        // Render nested UI
+        for (const [month, records] of Object.entries(feedbackByMonth)) {
+            // Month Header Row
             feedbackTable.innerHTML += `
                 <tr>
-                    <td class="text-light"><div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>${emailHtml}</td>
-                    <td class="text-muted-c"><span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br><small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small></td>
-                    <td class="small">${snippet}<div class="mt-1">${generateMediaBadges(data.attachments)}</div></td>
-                    <td><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${msgId}')">Delete</button></td>
+                    <td colspan="4" class="bg-dark text-light border-secondary pt-4 pb-2">
+                        <h6 class="accent-gold mb-0"><i class="bi bi-calendar-event me-2"></i>${month}</h6>
+                    </td>
                 </tr>`;
-        });
-    } catch (error) { feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`; }
+                
+            // Feedback Rows for that Month
+            records.forEach(data => {
+                const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
+                const displaySenderName = data.senderName || "Unknown Member";
+                const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) ? `<small class="text-muted-c">${data.senderEmail}</small>` : '';
+
+                feedbackTable.innerHTML += `
+                    <tr>
+                        <td class="text-light"><div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>${emailHtml}</td>
+                        <td class="text-muted-c"><span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br><small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small></td>
+                        <td class="small">${snippet}<div class="mt-1">${generateMediaBadges(data.attachments)}</div></td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${data.id}')">Delete</button></td>
+                    </tr>`;
+            });
+        }
+        
+    } catch (error) { 
+        console.error(error);
+        feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`; 
+    }
 }
 
 window.deleteGlobalFeedback = async function(msgId) {
