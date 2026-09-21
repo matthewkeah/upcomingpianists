@@ -93,7 +93,6 @@
                             <input type="text" class="form-control field" id="scoreTitle" placeholder="e.g., Chopin Ballade No. 1" required>
                         </div>
                         
-                        <!-- Restored Target Month Dropdown -->
                         <div class="mb-3">
                             <label class="form-label text-muted-c small">Target Masterclass Month *</label>
                             <select class="form-select field" id="memberSessionMonth" required>
@@ -102,9 +101,14 @@
                         </div>
 
                         <div class="mb-4">
-                            <label for="pdfFile" class="form-label small">Upload PDF or Photo *</label>
-                            <!-- Updated accept attribute for image access -->
-                            <input class="form-control field" type="file" id="pdfFile" accept="application/pdf, image/*" required>
+                            <label class="form-label small">Upload Format & Media *</label>
+                            <div class="input-group">
+                                <select class="form-select field border-end-0" id="memberMediaType" style="max-width: 110px;" required>
+                                    <option value="pdf">PDF</option>
+                                    <option value="image">Photos</option>
+                                </select>
+                                <input class="form-control field" type="file" id="pdfFile" accept="application/pdf" required>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-outline-gold w-100">Upload to Repository</button>
                     </form>
@@ -127,11 +131,11 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Appended ?v=1.1 for cache busting -->
+    
+    <!-- Dynamic Auto-Cache Buster -->
     <script>
         const appScript = document.createElement('script');
         appScript.type = 'module';
-        // Appends a unique millisecond timestamp to force a fresh download
         appScript.src = 'main.js?v=' + Date.now();
         document.body.appendChild(appScript);
     </script>

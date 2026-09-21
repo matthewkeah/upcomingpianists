@@ -926,7 +926,6 @@ function injectAdminModals() {
     }
 }
 
-// Helper: Generate array of month strings from start date to now
 function getMonthRange(startDate) {
     const start = startDate || new Date();
     const end = new Date();
@@ -936,14 +935,13 @@ function getMonthRange(startDate) {
         months.push(current.toLocaleString('default', { month: 'long' }) + " " + current.getFullYear());
         current.setMonth(current.getMonth() + 1);
     }
-    return months.reverse(); // Newest first
+    return months.reverse(); 
 }
 
-// Admin Trigger Functions for wiping data centrally from the modal
 window.adminWipeSingleScore = async function(scoreId, email, name, uid, joinedMs) {
     if(!confirm("Wipe this score and its associated feedback?")) return;
     await window.deleteScore(scoreId, true); 
-    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+    window.viewUserParticipation(email, name, uid, joinedMs); 
 }
 
 window.adminWipeAllScores = async function(uid, email, name, joinedMs) {
@@ -953,7 +951,7 @@ window.adminWipeAllScores = async function(uid, email, name, joinedMs) {
     const promises = [];
     snap.forEach(d => promises.push(window.deleteScore(d.id, true)));
     await Promise.all(promises);
-    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+    window.viewUserParticipation(email, name, uid, joinedMs); 
 }
 
 window.adminWipeMonthFeedback = async function(email, monthStr, name, uid, joinedMs) {
@@ -969,7 +967,7 @@ window.adminWipeMonthFeedback = async function(email, monthStr, name, uid, joine
         }
     });
     await Promise.all(promises);
-    window.viewUserParticipation(email, name, uid, joinedMs); // Refresh modal
+    window.viewUserParticipation(email, name, uid, joinedMs); 
 }
 
 window.viewUserParticipation = async function(email, name, uid, joinedTimestamp) {
@@ -987,7 +985,6 @@ window.viewUserParticipation = async function(email, name, uid, joinedTimestamp)
         const fbQ = query(collection(db, "score_feedback"), where("senderEmail", "==", email));
         const fbSnap = await getDocs(fbQ);
         
-        // Group feedback by month to evaluate attendance natively
         const feedbackByMonth = {};
         fbSnap.forEach(d => {
             const f = d.data();
@@ -997,7 +994,6 @@ window.viewUserParticipation = async function(email, name, uid, joinedTimestamp)
             feedbackByMonth[monthStr].push({ id: d.id, ...f, dateObj: date });
         });
 
-        // 1. SCORING SECTION
         let html = `<div class="d-flex justify-content-between align-items-center mt-2 mb-2">
             <h6 class="accent-gold mb-0">Scores Uploaded (${scSnap.size})</h6>
             ${scSnap.size > 0 ? `<button class="btn btn-sm btn-outline-danger" onclick="adminWipeAllScores('${uid}', '${email}', '${name.replace(/'/g, "\\'")}', '${joinedTimestamp}')">Wipe All Scores</button>` : ''}
@@ -1022,7 +1018,6 @@ window.viewUserParticipation = async function(email, name, uid, joinedTimestamp)
             });
         }
         
-        // 2. ATTENDANCE & FEEDBACK TIMELINE
         html += `</ul><h6 class="accent-gold mb-3">Attendance Timeline (Since ${joinDate.toLocaleDateString()})</h6><div class="accordion accordion-flush" id="participationAccordion">`;
         
         activeMonthsRange.forEach((monthStr, index) => {
@@ -1092,8 +1087,6 @@ async function loadAdminUsers() {
             if (d.data().createdAt) {
                 const fbDate = d.data().createdAt.toDate();
                 const fbMonth = fbDate.toLocaleString('default', { month: 'long' }) + " " + fbDate.getFullYear();
-                
-                // Track total unique feedback months per user for percentage calculation
                 if (!userFeedback[d.data().senderEmail]) userFeedback[d.data().senderEmail] = new Set();
                 userFeedback[d.data().senderEmail].add(fbMonth);
             }
@@ -1112,7 +1105,7 @@ async function loadAdminUsers() {
         usersArray.forEach((userData) => {
             const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
-            // Auto-heal rogue admins from old testing
+            // Auto-heal rogue database entries to prevent unauthorized admin access
             if (!isCoreAdmin && userData.role === 'admin') {
                 updateDoc(doc(db, "users", userData.id), { role: "member" }).catch(err => console.error("Failed to auto-demote:", err));
             }
@@ -1186,6 +1179,22 @@ function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
     if (!form) return;
 
+    // Media type toggle logic
+    const regTypeObj = document.getElementById("regMediaType");
+    const regFileObj = document.getElementById("actionPdfFile");
+    if (regTypeObj && regFileObj) {
+        regTypeObj.addEventListener("change", (e) => {
+            if (e.target.value === "image") {
+                regFileObj.accept = "image/*";
+                regFileObj.multiple = true;
+            } else {
+                regFileObj.accept = "application/pdf";
+                regFileObj.multiple = false;
+            }
+            regFileObj.value = ""; 
+        });
+    }
+
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
@@ -1201,7 +1210,6 @@ function initRegistrationForm() {
 
         const btn = form.querySelector("button[type=submit]");
         const status = document.getElementById("registrationStatus");
-        const fileInput = document.getElementById("actionPdfFile");
         const month = document.getElementById("sessionMonth").value;
         const title = document.getElementById("repertoire").value.trim();
 
@@ -1214,11 +1222,11 @@ function initRegistrationForm() {
         btn.disabled = true; btn.textContent = "Uploading Media..."; status.classList.add("d-none");
 
         try {
-            const uploadedMedia = await uploadMediaArray(fileInput.files);
+            const uploadedMedia = await uploadMediaArray(regFileObj.files);
             
             let fileType = 'image';
-            for (let i = 0; i < fileInput.files.length; i++) {
-                if (fileInput.files[i].type.includes('pdf')) fileType = 'pdf';
+            for (let i = 0; i < regFileObj.files.length; i++) {
+                if (regFileObj.files[i].type.includes('pdf')) fileType = 'pdf';
             }
             
             const joinedUrls = uploadedMedia.map(m => m.url).join(',');
@@ -1227,7 +1235,7 @@ function initRegistrationForm() {
                 pieceTitle: title,
                 pdfUrl: joinedUrls,
                 mediaType: fileType, 
-                fileName: fileInput.files[0].name,
+                fileName: regFileObj.files[0].name,
                 sessionMonth: month,
                 uploadedByEmail: formEmail,
                 uploadedByUid: auth.currentUser.uid,
@@ -1319,6 +1327,7 @@ async function loadRepertoireForMonth(targetMonth) {
         list.innerHTML = "";
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
+        
         let isAdmin = false;
         if (auth.currentUser && auth.currentUser.email) {
             isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
@@ -1487,154 +1496,6 @@ async function loadCommunicationsHub() {
     } catch (err) { feed.innerHTML = "<div class='alert alert-danger'>Failed to load broadcasts. Please check your connection.</div>"; }
 }
 
-// ----------------------------------------------------------------------------
-// ADMIN GLOBAL FEEDBACK VIEWER (NESTED BY MONTH)
-// ----------------------------------------------------------------------------
-async function loadAdminFeedback() {
-    const feedbackTable = document.getElementById("adminFeedbackTableBody");
-    if (!feedbackTable) return;
-    feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">Loading feedback records...</td></tr>`;
-
-    try {
-        const q = query(collection(db, "score_feedback"), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
-        
-        feedbackTable.innerHTML = "";
-        if (querySnapshot.empty) { 
-            feedbackTable.innerHTML = `<tr><td colspan="4" class="text-center text-muted-c py-4">No feedback records found.</td></tr>`; 
-            return; 
-        }
-
-        const feedbackByMonth = {};
-        
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const date = data.createdAt ? data.createdAt.toDate() : new Date();
-            const monthStr = date.toLocaleString('default', { month: 'long' }) + " " + date.getFullYear();
-            
-            if (!feedbackByMonth[monthStr]) feedbackByMonth[monthStr] = [];
-            feedbackByMonth[monthStr].push({ id: docSnap.id, ...data });
-        });
-
-        for (const [month, records] of Object.entries(feedbackByMonth)) {
-            feedbackTable.innerHTML += `
-                <tr>
-                    <td colspan="4" class="bg-dark text-light border-secondary pt-4 pb-2">
-                        <h6 class="accent-gold mb-0"><i class="bi bi-calendar-event me-2"></i>${month}</h6>
-                    </td>
-                </tr>`;
-                
-            records.forEach(data => {
-                const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
-                const displaySenderName = data.senderName || "Unknown Member";
-                const emailHtml = (data.senderEmail && data.senderEmail !== displaySenderName) ? `<small class="text-muted-c">${data.senderEmail}</small>` : '';
-
-                feedbackTable.innerHTML += `
-                    <tr>
-                        <td class="text-light"><div class="mb-1"><strong>Sender:</strong> ${displaySenderName}</div>${emailHtml}</td>
-                        <td class="text-muted-c"><span class="badge badge-kcpo mb-1">${data.pieceTitle || "Score"}</span><br><small style="font-size: 0.8rem;">For: ${data.performerName || "Pianist"} ${data.performerEmail ? `(${data.performerEmail})` : ''}</small></td>
-                        <td class="small">${snippet}<div class="mt-1">${generateMediaBadges(data.attachments)}</div></td>
-                        <td><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalFeedback('${data.id}')">Delete</button></td>
-                    </tr>`;
-            });
-        }
-        
-    } catch (error) { 
-        console.error(error);
-        feedbackTable.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-4">Failed to load feedback records.</td></tr>`; 
-    }
-}
-
-window.deleteGlobalFeedback = async function(msgId) {
-    if (!confirm("Are you sure you want to permanently delete this comment?")) return;
-    try { await deleteDoc(doc(db, "score_feedback", msgId)); loadAdminFeedback(); } catch (error) { alert("Failed to delete comment: " + error.message); }
-};
-
-window.setComposerTarget = function(uid, name, email) {
-    document.getElementById('broadcastTargetUid').value = uid;
-    document.getElementById('broadcastTargetEmail').value = email;
-    if (uid === 'all') {
-        document.getElementById('composerTargetLabel').textContent = "Broadcasting to: All Members";
-        document.getElementById('composerPrivateBadge').classList.add('d-none');
-    } else {
-        document.getElementById('composerTargetLabel').textContent = `Direct Message: ${name}`;
-        document.getElementById('composerPrivateBadge').classList.remove('d-none');
-    }
-    if (window.innerWidth < 992) { document.getElementById('adminBroadcastForm').scrollIntoView({behavior: 'smooth'}); }
-}
-
-function filterDirectory() {
-    const searchInput = document.getElementById('adminMemberSearch');
-    if (!searchInput) return;
-    const queryStr = searchInput.value.toLowerCase();
-    const list = document.getElementById('adminMemberList');
-    list.innerHTML = "";
-    
-    globalUserDirectory.filter(u => u.name.toLowerCase().includes(queryStr) || u.email.toLowerCase().includes(queryStr))
-    .forEach(u => {
-        list.innerHTML += `
-            <button class="list-group-item list-group-item-action bg-transparent border-secondary text-light py-3" 
-                    onclick="setComposerTarget('${u.id}', '${u.name.replace(/'/g, "\\'")}', '${u.email}')">
-                <strong>${u.name}</strong><br><small class="text-muted-c">${u.email}</small>
-            </button>`;
-    });
-}
-
-async function loadAdminDirectory() {
-    const list = document.getElementById("adminMemberList");
-    if (!list) return;
-    try {
-        const snap = await getDocs(collection(db, "users"));
-        globalUserDirectory = [];
-        snap.forEach(doc => { const data = doc.data(); globalUserDirectory.push({ id: doc.id, name: data.name || "Unknown", email: data.email }); });
-        globalUserDirectory.sort((a,b) => a.name.localeCompare(b.name));
-        filterDirectory();
-        document.getElementById('adminMemberSearch').addEventListener('input', filterDirectory);
-    } catch (err) { console.error("Failed to load directory", err); }
-}
-
-async function initAdminBroadcasts() {
-    const form = document.getElementById("adminBroadcastForm");
-    if (!form || form.dataset.initialized) return; 
-    form.dataset.initialized = "true";
-    await loadAdminDirectory();
-
-    form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const targetUid = document.getElementById("broadcastTargetUid").value;
-        const targetEmail = document.getElementById("broadcastTargetEmail").value;
-        const title = document.getElementById("broadcastTitle").value.trim();
-        const msg = document.getElementById("broadcastMessage").value.trim();
-        const fileInput = document.getElementById("broadcastMedia");
-        
-        const btn = document.getElementById("btnSendBroadcast");
-        const status = document.getElementById("broadcastStatus");
-        
-        btn.disabled = true; btn.textContent = "Publishing & Sending Emails..."; status.classList.add("d-none");
-        try {
-            let uploadedMedia = [];
-            if (fileInput.files.length > 0) uploadedMedia = await uploadMediaArray(fileInput.files);
-            
-            await addDoc(collection(db, "communications"), {
-                type: targetUid === "all" ? "broadcast" : "direct", targetUid: targetUid, targetEmail: targetEmail,
-                title: title, message: msg, attachments: uploadedMedia, adminEmail: auth.currentUser.email, createdAt: serverTimestamp()
-            });
-            
-            if (typeof emailjs !== 'undefined') {
-                let emailsToNotify = targetUid === "all" ? globalUserDirectory.map(u => u.email).join(",") : targetEmail;
-                await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-                    to_email: emailsToNotify, subject: title, message: msg, admin_name: sessionStorage.getItem("kcpo_name") || "KCPO Admin"
-                });
-            }
-            
-            status.className = "alert alert-success mt-3 d-block small"; status.textContent = "Message published!";
-            form.reset(); setComposerTarget('all', 'All Members', 'all');
-        } catch (error) {
-            status.className = "alert alert-danger mt-3 d-block small"; status.textContent = "Error: " + (error.text || error.message);
-        } finally { btn.disabled = false; btn.textContent = "Publish & Send Email Notification"; }
-    });
-}
-
 async function loadMemberInbox(user) {
     const inboxFeed = document.getElementById("memberInboxFeed");
     if (!inboxFeed) return;
@@ -1715,6 +1576,22 @@ async function initMemberDashboard() {
 
     const accessDeniedMsg = document.getElementById("memberAccessDenied");
     
+    // Member form media toggle logic
+    const memTypeObj = document.getElementById("memberMediaType");
+    const memFileObj = document.getElementById("pdfFile");
+    if (memTypeObj && memFileObj) {
+        memTypeObj.addEventListener("change", (e) => {
+            if (e.target.value === "image") {
+                memFileObj.accept = "image/*";
+                memFileObj.multiple = true;
+            } else {
+                memFileObj.accept = "application/pdf";
+                memFileObj.multiple = false;
+            }
+            memFileObj.value = "";
+        });
+    }
+    
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             accessDeniedMsg?.classList.add("d-none");
@@ -1728,20 +1605,19 @@ async function initMemberDashboard() {
                     e.preventDefault();
                     const titleInput = document.getElementById("scoreTitle");
                     const monthInput = document.getElementById("memberSessionMonth");
-                    const fileInput = document.getElementById("pdfFile");
                     const statusBox = document.getElementById("uploadStatusBox");
                     const submitBtn = uploadForm.querySelector("button[type=submit]");
 
-                    if (fileInput.files.length === 0) return;
+                    if (memFileObj.files.length === 0) return;
 
                     submitBtn.disabled = true; submitBtn.innerHTML = `Uploading...`; statusBox.classList.add("d-none");
 
                     try {
-                        const uploadedMedia = await uploadMediaArray(fileInput.files);
+                        const uploadedMedia = await uploadMediaArray(memFileObj.files);
                         
                         let fileType = 'image';
-                        for (let i = 0; i < fileInput.files.length; i++) {
-                            if (fileInput.files[i].type.includes('pdf')) fileType = 'pdf';
+                        for (let i = 0; i < memFileObj.files.length; i++) {
+                            if (memFileObj.files[i].type.includes('pdf')) fileType = 'pdf';
                         }
                         
                         const joinedUrls = uploadedMedia.map(m => m.url).join(',');
@@ -1750,7 +1626,7 @@ async function initMemberDashboard() {
                             pieceTitle: titleInput.value.trim(),
                             pdfUrl: joinedUrls, 
                             mediaType: fileType, 
-                            fileName: fileInput.files[0].name,
+                            fileName: memFileObj.files[0].name,
                             sessionMonth: monthInput.value,
                             uploadedByEmail: user.email, 
                             uploadedByUid: user.uid,
