@@ -1112,12 +1112,18 @@ async function loadAdminUsers() {
         usersArray.forEach((userData) => {
             const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
-            // Green/Red purely indicates Registration status for the active month
+            // Auto-heal rogue admins from old testing
+            if (!isCoreAdmin && userData.role === 'admin') {
+                updateDoc(doc(db, "users", userData.id), { role: "member" }).catch(err => console.error("Failed to auto-demote:", err));
+            }
+            
+            const actualRole = isCoreAdmin ? "ADMIN" : "MEMBER";
+            const roleBadgeClass = isCoreAdmin ? "bg-warning text-dark" : "badge-kcpo";
+            
             const hasRegistered = userScores[userData.email] ? 
                 `<i class="bi bi-circle-fill text-success small me-1" title="Registered this month"></i>` : 
                 `<i class="bi bi-circle-fill text-danger small me-1" title="Not registered this month"></i>`;
             
-            // Calculate Percentage Active
             const joinDate = userData.createdAt ? userData.createdAt.toDate() : new Date();
             const totalMonthsSinceJoined = getMonthRange(joinDate).length;
             const uniqueMonthsAttended = userFeedback[userData.email] ? userFeedback[userData.email].size : 0;
@@ -1131,7 +1137,7 @@ async function loadAdminUsers() {
                 <tr>
                     <td class="text-light">${hasRegistered} ${userData.name || "Unknown Pianist"} <span class="badge bg-secondary ms-2 opacity-75">${activePercentage}% Active</span></td>
                     <td class="text-muted-c">${userData.email}</td>
-                    <td><span class="badge ${userData.role === 'admin' ? 'bg-warning text-dark' : 'badge-kcpo'} px-2 py-1">${userData.role.toUpperCase()}</span></td>
+                    <td><span class="badge ${roleBadgeClass} px-2 py-1">${actualRole}</span></td>
                     <td>${actionButtons}</td>
                 </tr>
             `;
@@ -1313,7 +1319,6 @@ async function loadRepertoireForMonth(targetMonth) {
         list.innerHTML = "";
         const currentDate = new Date();
         const currentMonthString = currentDate.toLocaleString('default', { month: 'long' }) + " " + currentDate.getFullYear();
-        
         let isAdmin = false;
         if (auth.currentUser && auth.currentUser.email) {
             isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
@@ -1500,7 +1505,6 @@ async function loadAdminFeedback() {
             return; 
         }
 
-        // Group feedback by month
         const feedbackByMonth = {};
         
         querySnapshot.forEach((docSnap) => {
@@ -1512,9 +1516,7 @@ async function loadAdminFeedback() {
             feedbackByMonth[monthStr].push({ id: docSnap.id, ...data });
         });
 
-        // Render nested UI
         for (const [month, records] of Object.entries(feedbackByMonth)) {
-            // Month Header Row
             feedbackTable.innerHTML += `
                 <tr>
                     <td colspan="4" class="bg-dark text-light border-secondary pt-4 pb-2">
@@ -1522,7 +1524,6 @@ async function loadAdminFeedback() {
                     </td>
                 </tr>`;
                 
-            // Feedback Rows for that Month
             records.forEach(data => {
                 const snippet = data.message.length > 60 ? data.message.substring(0, 60) + "..." : data.message;
                 const displaySenderName = data.senderName || "Unknown Member";
