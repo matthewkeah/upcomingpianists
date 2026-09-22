@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * KCPO PORTAL — APP ENGINE
+ * KCPO PORTAL — APP ENGINE (CLOUDFLARE R2 INTEGRATED)
  * Loaded dynamically via cache-buster script in HTML
  * ============================================================================
  */
@@ -28,6 +28,10 @@ import {
     where,
     orderBy
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+import { 
+    getFunctions, 
+    httpsCallable 
+} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
@@ -41,6 +45,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+
+// Callable backend function for secure S3/R2 pre-signed URLs
+const getPresignedUrl = httpsCallable(functions, "generatePresignedUrl");
 
 // ----------------------------------------------------------------------------
 // GLOBAL CONSTANTS & STATE
@@ -48,10 +56,6 @@ const db = getFirestore(app);
 const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
-
-const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/auto/upload"; 
-const CLOUDINARY_IMAGE_URL = "https://api.cloudinary.com/v1_1/xy7vxeyj/image/upload"; 
-const CLOUDINARY_PRESET = "qe5c4qkd"; 
 
 const EMAILJS_PUBLIC_KEY = "knA4KtHIfdGjzsSA0";
 const EMAILJS_SERVICE_ID = "service_f3at2ti";
@@ -830,15 +834,31 @@ async function processAndSaveAnnotations() {
             await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[num]; });
             offCtx.drawImage(annImg, 0, 0);
             
-            const formData = new FormData();
-            formData.append("file", offCanvas.toDataURL("image/png"));
-            formData.append("upload_preset", CLOUDINARY_PRESET);
+            // 1. Convert annotated canvas into binary image blob
+            const dataUrl = offCanvas.toDataURL("image/png");
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const fileName = `annotated-page-${num}-${Date.now()}.png`;
+            const fileType = "image/png";
+
+            // 2. Request pre-signed URL from Firebase Function
+            const ticketResponse = await getPresignedUrl({ 
+                fileName: fileName, 
+                fileType: fileType 
+            });
+            const { uploadUrl, publicUrl } = ticketResponse.data;
             
-            const cloudinaryRes = await fetch(CLOUDINARY_IMAGE_URL, { method: "POST", body: formData });
-            const cloudinaryData = await cloudinaryRes.json();
+            // 3. Upload directly to Cloudflare R2 via HTTP PUT
+            const uploadRes = await fetch(uploadUrl, {
+                method: "PUT",
+                body: blob,
+                headers: {
+                    "Content-Type": fileType
+                }
+            });
             
-            if (!cloudinaryRes.ok) throw new Error(cloudinaryData.error?.message || "Upload failed.");
-            window.pendingAttachments.push({ url: cloudinaryData.secure_url, type: 'image' });
+            if (!uploadRes.ok) throw new Error("Cloudflare R2 annotation upload failed.");
+            window.pendingAttachments.push({ url: publicUrl, type: 'image' });
         }
         
         const statusMsg = document.getElementById("chatStatusMsg");
@@ -857,23 +877,37 @@ async function processAndSaveAnnotations() {
 }
 
 // ----------------------------------------------------------------------------
-// CLOUDINARY UPLOAD ROUTER
+// CLOUDFLARE R2 UPLOAD PIPELINE
 // ----------------------------------------------------------------------------
 async function uploadMediaArray(fileList) {
     const uploadedData = [];
     for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", CLOUDINARY_PRESET);
         
-        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error?.message || "Media upload failed.");
+        // 1. Fetch pre-signed upload URL from Firebase Functions
+        const response = await getPresignedUrl({ 
+            fileName: file.name, 
+            fileType: file.type || "application/octet-stream"
+        });
+        const { uploadUrl, publicUrl } = response.data;
+
+        // 2. Upload file binary directly to Cloudflare R2
+        const uploadRes = await fetch(uploadUrl, {
+            method: "PUT",
+            body: file,
+            headers: {
+                "Content-Type": file.type || "application/octet-stream"
+            }
+        });
+
+        if (!uploadRes.ok) throw new Error(`Cloudflare R2 media upload failed for ${file.name}.`);
+
+        const isImage = file.type.startsWith('image');
+        const isVideo = file.type.startsWith('video');
         
         uploadedData.push({ 
-            url: data.secure_url, 
-            type: data.resource_type === 'image' ? 'image' : (data.resource_type === 'video' ? 'video' : 'raw'), 
+            url: publicUrl, 
+            type: isImage ? 'image' : (isVideo ? 'video' : 'raw'), 
             name: file.name 
         });
     }
@@ -1105,7 +1139,6 @@ async function loadAdminUsers() {
         usersArray.forEach((userData) => {
             const isCoreAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
             
-            // Auto-heal rogue database entries to prevent unauthorized admin access
             if (!isCoreAdmin && userData.role === 'admin') {
                 updateDoc(doc(db, "users", userData.id), { role: "member" }).catch(err => console.error("Failed to auto-demote:", err));
             }
@@ -1179,7 +1212,6 @@ function initRegistrationForm() {
     const form = document.getElementById("slotRegistrationForm");
     if (!form) return;
 
-    // Media type toggle logic
     const regTypeObj = document.getElementById("regMediaType");
     const regFileObj = document.getElementById("actionPdfFile");
     if (regTypeObj && regFileObj) {
@@ -1217,9 +1249,9 @@ function initRegistrationForm() {
         const lName = document.getElementById("lastName")?.value.trim() || "";
         const formEmail = document.getElementById("email")?.value.trim() || auth.currentUser.email;
         const isHybrid = document.getElementById("hybridCheck")?.checked || false;
-        const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcpo_name") || "Member";
+        const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcPO_name") || "Member";
 
-        btn.disabled = true; btn.textContent = "Uploading Media..."; status.classList.add("d-none");
+        btn.disabled = true; btn.textContent = "Uploading Media to R2..."; status.classList.add("d-none");
 
         try {
             const uploadedMedia = await uploadMediaArray(regFileObj.files);
@@ -1576,7 +1608,6 @@ async function initMemberDashboard() {
 
     const accessDeniedMsg = document.getElementById("memberAccessDenied");
     
-    // Member form media toggle logic
     const memTypeObj = document.getElementById("memberMediaType");
     const memFileObj = document.getElementById("pdfFile");
     if (memTypeObj && memFileObj) {
@@ -1610,7 +1641,7 @@ async function initMemberDashboard() {
 
                     if (memFileObj.files.length === 0) return;
 
-                    submitBtn.disabled = true; submitBtn.innerHTML = `Uploading...`; statusBox.classList.add("d-none");
+                    submitBtn.disabled = true; submitBtn.innerHTML = `Uploading to R2...`; statusBox.classList.add("d-none");
 
                     try {
                         const uploadedMedia = await uploadMediaArray(memFileObj.files);
@@ -1635,7 +1666,7 @@ async function initMemberDashboard() {
                         });
 
                         statusBox.className = "alert alert-success small p-2 mt-3 d-block"; 
-                        statusBox.textContent = "Media uploaded successfully!"; 
+                        statusBox.textContent = "Media uploaded successfully to R2!"; 
                         uploadForm.reset();
                         
                     } catch (error) {
@@ -1654,7 +1685,6 @@ async function initMemberDashboard() {
 
 // ----------------------------------------------------------------------------
 // BOOT SEQUENCE
-// Modules automatically defer execution until the HTML is parsed.
 // ----------------------------------------------------------------------------
 initTheme(); 
 markActiveNavLink(); 
