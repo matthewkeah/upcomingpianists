@@ -926,11 +926,15 @@ async function uploadMediaArray(fileList) {
     for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
         
+        // 1. Sanitize the filename to prevent S3 XML NoSuchKey encoding errors
+        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        
+        // 2. Ask the Cloudflare Worker for a secure upload ticket using the safe name
         const ticketRes = await fetch(`${WORKER_URL}/upload`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                fileName: file.name,
+                fileName: safeName,
                 fileType: file.type || "application/octet-stream",
                 uid: auth.currentUser ? auth.currentUser.uid : "guest"
             })
@@ -939,6 +943,7 @@ async function uploadMediaArray(fileList) {
         if (!ticketRes.ok) throw new Error("Failed to get upload ticket from Worker.");
         const { uploadUrl, fileKey } = await ticketRes.json();
 
+        // 3. Upload the binary file directly to Cloudflare R2
         const uploadRes = await fetch(uploadUrl, {
             method: "PUT",
             body: file,
@@ -953,9 +958,9 @@ async function uploadMediaArray(fileList) {
         const isVideo = file.type.startsWith('video');
         
         uploadedData.push({ 
-            url: fileKey, 
+            url: fileKey, // Store the safe internal path in Firestore
             type: isImage ? 'image' : (isVideo ? 'video' : 'raw'), 
-            name: file.name 
+            name: safeName 
         });
     }
     return uploadedData;
