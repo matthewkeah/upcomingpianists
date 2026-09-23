@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * KCPO PORTAL — APP ENGINE (CLOUDFLARE R2 INTEGRATED)
+ * KCPO PORTAL — APP ENGINE (PURE CLOUDFLARE R2 WORKER INTEGRATION)
  * Loaded dynamically via cache-buster script in HTML
  * ============================================================================
  */
@@ -28,10 +28,6 @@ import {
     where,
     orderBy
 } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-import { 
-    getFunctions, 
-    httpsCallable 
-} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-functions.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAvEHNXSC8XujK8Iuio2xEoLnyD3VItbbY",
@@ -45,10 +41,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app);
-
-// Callable backend function for secure S3/R2 pre-signed URLs
-const getPresignedUrl = httpsCallable(functions, "generatePresignedUrl");
 
 // ----------------------------------------------------------------------------
 // GLOBAL CONSTANTS & STATE
@@ -56,6 +48,9 @@ const getPresignedUrl = httpsCallable(functions, "generatePresignedUrl");
 const ADMIN_EMAILS = [
     "kenyanpianists@gmail.com"
 ];
+
+// Cloudflare Worker API Endpoint
+const WORKER_URL = "https://kcpo-media-auth.upcomingpianists.workers.dev";
 
 const EMAILJS_PUBLIC_KEY = "knA4KtHIfdGjzsSA0";
 const EMAILJS_SERVICE_ID = "service_f3at2ti";
@@ -164,7 +159,7 @@ const AUTH_MODAL_HTML = `
                     <div class="tab-pane fade show active" id="signin-pane">
                         <form id="signInForm">
                             <div class="mb-3"><input type="email" class="form-control field" id="signInEmail" required placeholder="Email"></div>
-                            <div class="mb-4"><input type="password" class="form-control field" id="signInPassword" required placeholder="Password"></div>
+                            <div class="mb-4"><input type="password" class="form-control field" id="signInPassword" required placeholder="Password" autocomplete="current-password"></div>
                             <button type="submit" class="btn btn-gold w-100 py-2">Sign In</button>
                         </form>
                     </div>
@@ -172,7 +167,7 @@ const AUTH_MODAL_HTML = `
                         <form id="signUpForm">
                             <div class="mb-3"><input type="text" class="form-control field" id="signUpName" required placeholder="Full Name"></div>
                             <div class="mb-3"><input type="email" class="form-control field" id="signUpEmail" required placeholder="Email"></div>
-                            <div class="mb-4"><input type="password" class="form-control field" id="signUpPassword" required placeholder="Min 6 chars"></div>
+                            <div class="mb-4"><input type="password" class="form-control field" id="signUpPassword" required placeholder="Min 6 chars" autocomplete="new-password"></div>
                             <button type="submit" class="btn btn-outline-gold w-100 py-2">Register</button>
                         </form>
                     </div>
@@ -307,6 +302,35 @@ function initAuth() {
 }
 
 // ----------------------------------------------------------------------------
+// SECURE URL RESOLVERS
+// ----------------------------------------------------------------------------
+window.getSecureViewUrl = async function(fileKey) {
+    if (!fileKey) return null;
+    if (fileKey.startsWith('http')) return fileKey; // Fallback for old public URLs
+
+    try {
+        const response = await fetch(`${WORKER_URL}/download`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileKey })
+        });
+        
+        if (!response.ok) throw new Error("Failed to get viewing ticket.");
+        const data = await response.json();
+        return data.downloadUrl;
+    } catch (error) {
+        console.error("View Error:", error);
+        alert("Failed to load secure media.");
+        return null;
+    }
+};
+
+window.openSecureMedia = async function(fileKey) {
+    const url = await window.getSecureViewUrl(fileKey);
+    if (url) window.open(url, '_blank');
+};
+
+// ----------------------------------------------------------------------------
 // IN-APP IMAGE VIEWER (LIGHTBOX) WITH GALLERY
 // ----------------------------------------------------------------------------
 let currentGallery = [];
@@ -351,9 +375,10 @@ window.zoomImageViewer = function(delta) {
 };
 
 window.downloadViewerImage = async function() {
-    const url = currentGallery[currentImageIndex];
-    if (!url) return;
+    const key = currentGallery[currentImageIndex];
+    if (!key) return;
     try {
+        const url = await window.getSecureViewUrl(key);
         const res = await fetch(url);
         const blob = await res.blob();
         const a = document.createElement('a');
@@ -365,12 +390,15 @@ window.downloadViewerImage = async function() {
     } catch (err) { console.error("Download failed", err); }
 };
 
-window.updateViewerImage = function() {
+window.updateViewerImage = async function() {
     if (!currentGallery || currentGallery.length === 0) return;
     imgViewerScale = 1.0;
     const targetImg = document.getElementById('viewerImageTarget');
     targetImg.style.width = '100%';
-    targetImg.src = currentGallery[currentImageIndex];
+    
+    const secureUrl = await window.getSecureViewUrl(currentGallery[currentImageIndex]);
+    targetImg.src = secureUrl;
+    
     document.getElementById('btnViewerPrev').style.display = currentImageIndex > 0 ? 'block' : 'none';
     document.getElementById('btnViewerNext').style.display = currentImageIndex < currentGallery.length - 1 ? 'block' : 'none';
 };
@@ -757,7 +785,6 @@ window.openMediaAnnotator = async function(mediaUrlsString, mediaType) {
     injectPdfModal();
     
     window.isImageAnnotator = (mediaType === 'image');
-    window.imagePageUrls = window.isImageAnnotator ? mediaUrlsString.split(',') : [];
     
     pageDrawings = {};
     pagesEdited.clear();
@@ -781,10 +808,21 @@ window.openMediaAnnotator = async function(mediaUrlsString, mediaType) {
     try {
         await modalShown;
         
+        // Resolve the secure URL via Cloudflare Worker before passing to viewer
         if (!window.isImageAnnotator) {
+            const resolvedUrl = await window.getSecureViewUrl(mediaUrlsString);
+            if (!resolvedUrl) throw new Error("Could not resolve media URL");
+            
             const pdfjs = await loadPDFJSLibrary();
-            const loadingTask = pdfjs.getDocument(mediaUrlsString);
+            const loadingTask = pdfjs.getDocument(resolvedUrl);
             pdfDoc = await loadingTask.promise;
+        } else {
+            const keys = mediaUrlsString.split(',');
+            window.imagePageUrls = [];
+            for (let key of keys) {
+                const imgUrl = await window.getSecureViewUrl(key);
+                window.imagePageUrls.push(imgUrl);
+            }
         }
         renderPage(pageNum);
     } catch (err) {
@@ -834,21 +872,25 @@ async function processAndSaveAnnotations() {
             await new Promise(r => { annImg.onload = r; annImg.src = pageDrawings[num]; });
             offCtx.drawImage(annImg, 0, 0);
             
-            // 1. Convert annotated canvas into binary image blob
             const dataUrl = offCanvas.toDataURL("image/png");
             const res = await fetch(dataUrl);
             const blob = await res.blob();
             const fileName = `annotated-page-${num}-${Date.now()}.png`;
             const fileType = "image/png";
 
-            // 2. Request pre-signed URL from Firebase Function
-            const ticketResponse = await getPresignedUrl({ 
-                fileName: fileName, 
-                fileType: fileType 
+            const ticketRes = await fetch(`${WORKER_URL}/upload`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    fileName: fileName,
+                    fileType: fileType,
+                    uid: auth.currentUser ? auth.currentUser.uid : "guest"
+                })
             });
-            const { uploadUrl, publicUrl } = ticketResponse.data;
             
-            // 3. Upload directly to Cloudflare R2 via HTTP PUT
+            if (!ticketRes.ok) throw new Error("Failed to get upload ticket from Worker.");
+            const { uploadUrl, fileKey } = await ticketRes.json();
+            
             const uploadRes = await fetch(uploadUrl, {
                 method: "PUT",
                 body: blob,
@@ -858,7 +900,7 @@ async function processAndSaveAnnotations() {
             });
             
             if (!uploadRes.ok) throw new Error("Cloudflare R2 annotation upload failed.");
-            window.pendingAttachments.push({ url: publicUrl, type: 'image' });
+            window.pendingAttachments.push({ url: fileKey, type: 'image' });
         }
         
         const statusMsg = document.getElementById("chatStatusMsg");
@@ -884,14 +926,19 @@ async function uploadMediaArray(fileList) {
     for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
         
-        // 1. Fetch pre-signed upload URL from Firebase Functions
-        const response = await getPresignedUrl({ 
-            fileName: file.name, 
-            fileType: file.type || "application/octet-stream"
+        const ticketRes = await fetch(`${WORKER_URL}/upload`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fileName: file.name,
+                fileType: file.type || "application/octet-stream",
+                uid: auth.currentUser ? auth.currentUser.uid : "guest"
+            })
         });
-        const { uploadUrl, publicUrl } = response.data;
+        
+        if (!ticketRes.ok) throw new Error("Failed to get upload ticket from Worker.");
+        const { uploadUrl, fileKey } = await ticketRes.json();
 
-        // 2. Upload file binary directly to Cloudflare R2
         const uploadRes = await fetch(uploadUrl, {
             method: "PUT",
             body: file,
@@ -906,7 +953,7 @@ async function uploadMediaArray(fileList) {
         const isVideo = file.type.startsWith('video');
         
         uploadedData.push({ 
-            url: publicUrl, 
+            url: fileKey, 
             type: isImage ? 'image' : (isVideo ? 'video' : 'raw'), 
             name: file.name 
         });
@@ -927,9 +974,9 @@ function generateMediaBadges(attachmentsArray) {
             html += `<span onclick="openImageViewer('${encodedGallery}', ${imgCounter})" class="badge bg-danger text-light" style="cursor: pointer;"><i class="bi bi-image"></i> Image</span>`;
             imgCounter++;
         } else if (media.type === 'video') {
-            html += `<a href="${media.url}" target="_blank" class="badge bg-warning text-dark text-decoration-none"><i class="bi bi-play-circle"></i> Video</a>`;
+            html += `<button type="button" onclick="openSecureMedia('${media.url}')" class="btn btn-sm btn-outline-warning text-dark"><i class="bi bi-play-circle"></i> Video</button>`;
         } else {
-            html += `<a href="${media.url}" target="_blank" class="badge bg-secondary text-light text-decoration-none"><i class="bi bi-file-earmark-pdf"></i> ${media.name ? media.name.substring(0,10) + '...' : 'Document'}</a>`;
+            html += `<button type="button" onclick="openSecureMedia('${media.url}')" class="btn btn-sm btn-outline-secondary text-light"><i class="bi bi-file-earmark-pdf"></i> ${media.name ? media.name.substring(0,10) + '...' : 'Document'}</button>`;
         }
     });
     html += '</div>';
@@ -1045,7 +1092,7 @@ window.viewUserParticipation = async function(email, name, uid, joinedTimestamp)
                         <span>${s.pieceTitle}</span> <span class="badge badge-kcpo ms-2">${s.sessionMonth}</span>
                     </div>
                     <div>
-                        <a href="${viewUrl}" target="_blank" class="text-info small me-3">View Media</a>
+                        <button type="button" onclick="openSecureMedia('${viewUrl}')" class="btn btn-sm btn-outline-info me-3">View Media</button>
                         <button class="btn btn-sm btn-outline-danger" onclick="adminWipeSingleScore('${d.id}', '${email}', '${name.replace(/'/g, "\\'")}', '${uid}', '${joinedTimestamp}')"><i class="bi bi-trash"></i></button>
                     </div>
                 </li>`;
@@ -1249,7 +1296,7 @@ function initRegistrationForm() {
         const lName = document.getElementById("lastName")?.value.trim() || "";
         const formEmail = document.getElementById("email")?.value.trim() || auth.currentUser.email;
         const isHybrid = document.getElementById("hybridCheck")?.checked || false;
-        const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcPO_name") || "Member";
+        const fullName = (fName + " " + lName).trim() || sessionStorage.getItem("kcpo_name") || "Member";
 
         btn.disabled = true; btn.textContent = "Uploading Media to R2..."; status.classList.add("d-none");
 
@@ -1384,7 +1431,7 @@ async function loadRepertoireForMonth(targetMonth) {
                         </p>
                         
                         <div class="mt-auto d-flex flex-column gap-2">
-                            <a href="${viewUrl}" target="_blank" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View Media</a>
+                            <button type="button" onclick="openSecureMedia('${viewUrl}')" class="btn btn-outline-gold btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i> View Media</button>
                             <button class="btn btn-outline-line btn-sm" onclick="openFeedbackChat('${scoreId}', '${data.pieceTitle.replace(/'/g, "\\'")}', ${data.chatLocked || false}, '${data.uploadedByEmail}', '${(data.uploaderName||"").replace(/'/g, "\\'")}', '${data.pdfUrl}', '${mediaTypeStr}')">
                                 <i class="bi bi-chat-text me-1"></i> Feedback Chat
                             </button>
